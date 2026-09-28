@@ -5,6 +5,21 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
 
 ---
 
+## Session: M2b — session BYOK + LLM instructions
+
+- **BYOK stored per session** server-side: `sessions` table, **Fernet-encrypted**
+  (`app/secrets.py`; key from `SECRET_KEY` or `<STORAGE_DIR>/secret.key`, 0600).
+  Endpoints `GET/PUT /api/session`, `DELETE /api/session/key`; the client sends a
+  random `X-Session-Id` (localStorage). Job creation uses the session key (and a
+  key sent with a job is saved to the session). `400` if no key and no env key.
+  The key is **never returned** (only `has_key` + masked hint) and never logged.
+- **`llm_instructions`** field (config + `JobCreate`) appended to the OCR prompt.
+- Frontend: Save/Forget key + status; “Additional LLM instructions” textarea; the
+  key is no longer kept in `localStorage` (only the session id is).
+- `cryptography>=42` added to server deps. Tests: **72 passing + 1 live**.
+
+---
+
 ## Session: M2 complete — verification, cost, glossary, model picker
 
 ### Engine (`ocrtran/`)

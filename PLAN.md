@@ -272,7 +272,10 @@ model-generated and user-editable, so treat it as **untrusted**.
 - ✅ **Model picker** from `/api/models` (filters by image capability).
 - ✅ **Cost**: real token usage captured per job + `usage` table, `/api/usage`,
   pre-run **estimate** (`/api/documents/{id}/estimate`).
-- ✅ **Glossary** and **do-not-translate** terms injected into the OCR prompt.
+- ✅ **Glossary**, **do-not-translate** terms, and free-form **additional LLM
+  instructions** injected into the OCR prompt.
+- ✅ **BYOK stored per session** (Fernet-encrypted at rest, never returned);
+  Save/Forget in the UI.
 - ✅ Opt-in **live** API test (`-m live`).
 
 **M3 — Remaining (as needed)**

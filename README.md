@@ -70,8 +70,10 @@ cd backend && PYTHONPATH=.deps:. uvicorn app.main:app --reload
 cd frontend && npm install && npm run dev
 ```
 
-Bring your own key in the UI (it is never stored server-side), or set `DS_KEY`
-in the environment for testing.
+Bring your own key (BYOK) in the UI — it is **stored encrypted for your browser
+session** (click *Forget* to clear it), or set `DS_KEY` in the environment for
+testing. You can also add a **glossary**, **do-not-translate** terms, and free-form
+**additional LLM instructions** per job.
 
 ## Output options
 

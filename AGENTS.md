@@ -19,11 +19,12 @@ refactor it into the importable `ocrtran/` package.
 
 ## Non-negotiable rules
 
-1. **Never commit secrets.** API keys are **BYOK** (supplied per user/session,
-   encrypted at rest). A server-side env key is a **testing fallback** only. Keys
-   are read at runtime, never logged, never returned to the frontend.
-   The engine accepts an explicit key: `Pipeline(cfg, api_key=...)`.
-   (`PipelineConfig.resolve_api_key(override)` — override wins, env falls back.)
+1. **Never commit secrets.** API keys are **BYOK**: stored per browser session in
+   the `sessions` table, encrypted with Fernet (`app/secrets.py`, key from
+   `SECRET_KEY` or `STORAGE_DIR/secret.key`). They are never logged and never
+   returned to the frontend (only `has_key` + a masked hint). A server-side env
+   key is a **testing fallback** only. The engine accepts an explicit key:
+   `Pipeline(cfg, api_key=...)`. (`/api/session` set/get/clear; `app/secrets.py`.)
 2. **LaTeX is untrusted code.** Compile with `-no-shell-escape`,
    `openin_any=p`, `openout_any=p`, in a per-job temp dir, as a non-root user,
    with timeouts and ulimits. See `PLAN.md` §11.

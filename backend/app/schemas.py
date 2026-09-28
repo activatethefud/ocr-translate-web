@@ -32,7 +32,21 @@ class JobCreate(BaseModel):
     prompt_version: str = "1"
     glossary: list[GlossaryItem] = []
     do_not_translate: list[str] = []
+    llm_instructions: str = ""
     verify_math: bool = False
+
+
+class SessionUpdate(BaseModel):
+    api_key: str | None = Field(default=None, description="BYOK; stored encrypted")
+    api_base: str | None = None
+    clear_key: bool = False
+
+
+class SessionOut(BaseModel):
+    id: str
+    has_key: bool
+    hint: str | None = None
+    api_base: str | None = None
 
 
 class DocumentOut(BaseModel):

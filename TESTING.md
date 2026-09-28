@@ -140,6 +140,10 @@ Each must have a named test:
 12. **Glossary / do-not-translate** must appear verbatim in the OCR prompt.
 13. **Cost tracking** — usage is summed and cost computed per model; unknown model
     costs 0 (never crashes).
+14. **BYOK storage** — keys are encrypted at rest, isolated per session, never
+    returned (only `has_key` + masked hint), cleared by `DELETE /api/session/key`.
+15. **No key, no job** — a session with no stored key and no env key returns `400`,
+    not a late failure.
 
 ## Coverage & CI
 

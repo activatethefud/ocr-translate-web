@@ -43,7 +43,7 @@ export function App() {
 
   // BYOK key is kept in localStorage for convenience; only sent with the job
   // request and never persisted on the server.
-  const [apiKey, setApiKey] = useState(localStorage.getItem("ocrtran_key") || "");
+  const [apiKey, setApiKey] = useState("");
   const [sourceLang, setSourceLang] = useState("Serbian");
   const [targetLang, setTargetLang] = useState("French");
   const [model, setModel] = useState("deepseek-flash");
@@ -53,13 +53,20 @@ export function App() {
   const [combine, setCombine] = useState<Combine>("interleave");
   const [glossaryText, setGlossaryText] = useState("");
   const [doNotTranslate, setDoNotTranslate] = useState("");
+  const [llmInstructions, setLlmInstructions] = useState("");
   const [verifyMath, setVerifyMath] = useState(false);
+  const [sessionHasKey, setSessionHasKey] = useState(false);
+  const [sessionHint, setSessionHint] = useState("");
 
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     api.listDocuments().then(setDocs).catch((e) => setError(String(e)));
     api.usage().then(setUsage).catch(() => undefined);
+    api
+      .getSession()
+      .then((s) => { setSessionHasKey(s.has_key); setSessionHint(s.hint ?? ""); })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -120,20 +127,36 @@ export function App() {
   async function onStart() {
     if (!doc) return;
     setError(""); setBusy(true);
-    localStorage.setItem("ocrtran_key", apiKey);
     const body: JobCreate = {
       source_lang: sourceLang, target_lang: targetLang, model,
       api_key: apiKey || undefined, font_main: fontMain,
       linebreak_locale: linebreak, bilingual, combine,
       glossary: parseGlossary(glossaryText),
       do_not_translate: doNotTranslate.split(",").map((s) => s.trim()).filter(Boolean),
+      llm_instructions: llmInstructions,
       verify_math: verifyMath,
     };
     if (!bilingual) body.combine = "interleave";
     try {
       const j = await api.createJob(doc.id, body);
       setJob(j); setEvents([]); setPages([]); setReport(null);
+      if (apiKey) setSessionHasKey(true);
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
+  }
+
+  async function saveKey() {
+    try {
+      const s = await api.saveKey(apiKey);
+      setSessionHasKey(s.has_key); setSessionHint(s.hint ?? "");
+    } catch (e) { setError(String(e)); }
+  }
+
+  async function forgetKey() {
+    try {
+      const s = await api.clearKey();
+      setSessionHasKey(s.has_key); setSessionHint(""); setApiKey("");
+      localStorage.removeItem("ocrtran_key");
+    } catch (e) { setError(String(e)); }
   }
 
   async function loadModels() {
@@ -198,10 +221,19 @@ export function App() {
           )}
 
           <h2>2 · Translate</h2>
-          <label>API key (BYOK, not stored)
+          <label>API key (BYOK — stored for this session, encrypted)
             <input type="password" value={apiKey} placeholder="sk-…"
                    onChange={(e) => setApiKey(e.target.value)} />
           </label>
+          <div className="row spread">
+            <span className="muted">
+              {sessionHasKey ? `key saved ${sessionHint}` : "no key saved for this session"}
+            </span>
+            <span>
+              <button className="ghost" type="button" onClick={saveKey} disabled={!apiKey}>Save</button>
+              <button className="ghost" type="button" onClick={forgetKey} disabled={!sessionHasKey}>Forget</button>
+            </span>
+          </div>
           <label>Model
             <div className="row">
               <input list="models" value={model} onChange={(e) => setModel(e.target.value)} />
@@ -255,6 +287,11 @@ export function App() {
           <label>Do not translate (comma separated)
             <input value={doNotTranslate} placeholder="Pythagore, Thalès"
                    onChange={(e) => setDoNotTranslate(e.target.value)} />
+          </label>
+          <label>Additional LLM instructions
+            <textarea value={llmInstructions}
+                      placeholder="e.g. Use a formal tone. Keep terminology consistent with the glossary."
+                      onChange={(e) => setLlmInstructions(e.target.value)} />
           </label>
           {estimate && (
             <p className="muted">≈ ${estimate.est_cost_usd.toFixed(4)} · {estimate.est_calls} model calls

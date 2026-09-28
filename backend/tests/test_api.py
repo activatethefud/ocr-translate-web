@@ -15,6 +15,8 @@ from tests.conftest import FakeProvider
 def client(monkeypatch):
     monkeypatch.setattr("ocrtran.pipeline.build_provider", lambda cfg, key=None: FakeProvider())
     with TestClient(app) as c:
+        # seed a session key so job creation succeeds (value is irrelevant: provider is faked)
+        c.put("/api/session", json={"api_key": "test-key"})
         yield c
 
 
@@ -44,7 +46,8 @@ def test_upload_rejects_garbage(client, tmp_path):
 
 
 def test_models_without_key(client):
-    r = client.get("/api/models")
+    # a session with no stored key returns the default model without a network call
+    r = client.get("/api/models", headers={"X-Session-Id": "models-nokey"})
     assert r.status_code == 200
     assert r.json()["models"][0]["id"]
 
@@ -61,6 +64,33 @@ def test_usage_ok(client):
     r = client.get("/api/usage")
     assert r.status_code == 200
     assert "cost_usd" in r.json() and "calls" in r.json()
+
+
+def test_session_stores_key_encrypted(client):
+    r = client.get("/api/session")
+    assert r.status_code == 200
+    assert r.json()["has_key"] is True
+    assert r.json()["hint"].startswith("••••")
+    # clearing and re-setting
+    assert client.delete("/api/session/key").json()["has_key"] is False
+    assert client.get("/api/session").json()["has_key"] is False
+    r = client.put("/api/session", json={"api_key": "sk-abcdef123456"})
+    assert r.json()["has_key"] is True and r.json()["hint"].endswith("3456")
+
+
+def test_job_create_requires_key(monkeypatch, tiny_pdf):
+    # a session with no saved key (and no env key) must reject job creation
+    monkeypatch.delenv("DS_KEY", raising=False)
+    monkeypatch.setattr("ocrtran.pipeline.build_provider", lambda cfg, key=None: FakeProvider())
+    with TestClient(app) as c:
+        with open(tiny_pdf, "rb") as fh:
+            did = c.post("/api/documents", files={"file": ("t.pdf", fh, "application/pdf")}).json()["id"]
+        r = c.post(
+            f"/api/documents/{did}/jobs",
+            json={"target_lang": "French"},
+            headers={"X-Session-Id": "nokey-session"},
+        )
+        assert r.status_code == 400
 
 
 def _wait(client, job_id, timeout=90):
@@ -89,6 +119,7 @@ def test_full_job_flow(client, tiny_pdf, xelatex_available):
             "bilingual": True,
             "verify_math": True,
             "glossary": [{"source": "Prava", "target": "droite"}],
+            "llm_instructions": "Keep the tone concise.",
         },
     )
     assert r.status_code == 200, r.text

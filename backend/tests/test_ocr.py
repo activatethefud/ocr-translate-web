@@ -37,6 +37,12 @@ def test_prompt_glossary_and_do_not_translate():
     assert "Pythagore" in p
 
 
+def test_prompt_additional_instructions():
+    p = build_ocr_prompt("Serbian", "French", instructions="Use a formal tone.")
+    assert "Use a formal tone." in p
+    assert "Additional" not in build_ocr_prompt("Serbian", "French", instructions="   ")
+
+
 def test_ocr_image_blocks(tmp_path):
     img = tmp_path / "p.png"
     img.write_bytes(b"not a real image")  # never decoded by the fake provider

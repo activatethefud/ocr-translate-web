@@ -10,7 +10,7 @@ import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -36,8 +36,11 @@ from .schemas import (
     ModelsResponse,
     OkOut,
     PageOut,
+    SessionOut,
+    SessionUpdate,
     UsageOut,
 )
+from .secrets import get_cipher, hint_for
 from .settings import Settings, get_settings
 
 logging.basicConfig(level=logging.INFO)
@@ -75,6 +78,78 @@ def _settings() -> Settings:
 
 def _runner() -> JobRunner:
     return app.state.runner
+
+
+# --------------------------------------------------------------------------
+# sessions (BYOK stored server-side, encrypted)
+# --------------------------------------------------------------------------
+def _session_id(x_session_id: str | None = Header(default=None)) -> str:
+    return (x_session_id or "default")[:64]
+
+
+def _get_session(s, sid: str) -> db.Session:
+    row = s.get(db.Session, sid)
+    if row is None:
+        row = db.Session(id=sid)
+        s.add(row)
+        s.commit()
+    return row
+
+
+def _stored_key(settings: Settings, sid: str) -> str | None:
+    s = db.get_session()
+    try:
+        row = s.get(db.Session, sid)
+        if not row or not row.api_key_enc:
+            return None
+        return get_cipher(settings).decrypt(row.api_key_enc)
+    finally:
+        s.close()
+
+
+def _session_out(settings: Settings, sid: str, row: db.Session) -> SessionOut:
+    key = get_cipher(settings).decrypt(row.api_key_enc)
+    return SessionOut(id=sid, has_key=bool(key), hint=hint_for(key), api_base=row.api_base)
+
+
+@app.get("/api/session", response_model=SessionOut)
+def get_session_info(settings: Settings = Depends(_settings_dep), sid: str = Depends(_session_id)):
+    s = db.get_session()
+    try:
+        return _session_out(settings, sid, _get_session(s, sid))
+    finally:
+        s.close()
+
+
+@app.put("/api/session", response_model=SessionOut)
+def update_session(
+    body: SessionUpdate, settings: Settings = Depends(_settings_dep), sid: str = Depends(_session_id)
+):
+    s = db.get_session()
+    try:
+        row = _get_session(s, sid)
+        if body.clear_key or body.api_key == "":
+            row.api_key_enc = None
+        elif body.api_key:
+            row.api_key_enc = get_cipher(settings).encrypt(body.api_key.strip())
+        if body.api_base is not None:
+            row.api_base = body.api_base or None
+        s.commit()
+        return _session_out(settings, sid, row)
+    finally:
+        s.close()
+
+
+@app.delete("/api/session/key", response_model=SessionOut)
+def clear_session_key(settings: Settings = Depends(_settings_dep), sid: str = Depends(_session_id)):
+    s = db.get_session()
+    try:
+        row = _get_session(s, sid)
+        row.api_key_enc = None
+        s.commit()
+        return _session_out(settings, sid, row)
+    finally:
+        s.close()
 
 
 # --------------------------------------------------------------------------
@@ -232,14 +307,28 @@ def estimate_document(
 # jobs
 # --------------------------------------------------------------------------
 @app.post("/api/documents/{doc_id}/jobs", response_model=JobOut)
-def create_job(doc_id: str, body: JobCreate, settings: Settings = Depends(_settings_dep)):
+def create_job(
+    doc_id: str, body: JobCreate, settings: Settings = Depends(_settings_dep), sid: str = Depends(_session_id)
+):
     s = db.get_session()
     try:
         doc = s.get(db.Document, doc_id)
         if not doc:
             raise HTTPException(404, "document not found")
         cfg = body.model_dump()
-        api_key = cfg.pop("api_key", None)  # BYOK: never persisted
+        provided_key = (cfg.pop("api_key", None) or "").strip()
+        if provided_key:
+            # remember the key for this session (encrypted at rest)
+            row = _get_session(s, sid)
+            row.api_key_enc = get_cipher(settings).encrypt(provided_key)
+            api_key = provided_key
+        else:
+            row = s.get(db.Session, sid)
+            api_key = get_cipher(settings).decrypt(row.api_key_enc) if row else None
+        if not api_key:
+            api_key = os.environ.get(settings.api_key_env)
+        if not api_key:
+            raise HTTPException(400, f"no API key: save one for this session or set ${settings.api_key_env}")
         cfg["model"] = body.model or settings.default_model
         job = db.Job(
             document_id=doc_id,
@@ -493,14 +582,17 @@ def download_artifact(artifact_id: str):
 
 @app.get("/api/models", response_model=ModelsResponse)
 def list_models(
-    api_key: str | None = None, api_base: str | None = None, settings: Settings = Depends(_settings_dep)
+    api_key: str | None = None,
+    api_base: str | None = None,
+    settings: Settings = Depends(_settings_dep),
+    sid: str = Depends(_session_id),
 ):
-    key = api_key or None
-    key = key or os.environ.get(settings.api_key_env)
+    key = api_key or _stored_key(settings, sid) or os.environ.get(settings.api_key_env)
     if not key:
         return ModelsResponse(models=[ModelInfo(id=settings.default_model, inputs=["image"])])
+    base = api_base or settings.api_base
     try:
-        prov = OpenAICompatibleProvider(api_base or settings.api_base, "probe", key)
+        prov = OpenAICompatibleProvider(base, "probe", key)
         models = prov.list_models()
     except (ProviderError, Exception):  # noqa: BLE001
         raise HTTPException(400, "could not list models (check key/endpoint)") from None

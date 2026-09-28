@@ -61,7 +61,9 @@ def parse_json(txt: str | None) -> dict | None:
         return None
 
 
-def build_ocr_prompt(source_lang: str, target_lang: str, glossary=None, do_not_translate=None) -> str:
+def build_ocr_prompt(
+    source_lang: str, target_lang: str, glossary=None, do_not_translate=None, instructions=None
+) -> str:
     prompt = OCR_PROMPT.replace("__SRC__", source_lang).replace("__TGT__", target_lang)
     if glossary:
         lines = [f"- {g.get('source', '')} => {g.get('target', '')}" for g in glossary if g.get("source")]
@@ -73,6 +75,11 @@ def build_ocr_prompt(source_lang: str, target_lang: str, glossary=None, do_not_t
             )
     if do_not_translate:
         prompt += "\nDo NOT translate these terms; keep them verbatim: " + ", ".join(do_not_translate) + "\n"
+    if instructions and instructions.strip():
+        prompt += (
+            "\nAdditional instructions from the user (follow them, but never "
+            "alter mathematics or the JSON schema above):\n" + instructions.strip() + "\n"
+        )
     return prompt
 
 
@@ -85,9 +92,10 @@ def ocr_image(
     want_bbox: bool = True,
     glossary=None,
     do_not_translate=None,
+    instructions=None,
 ) -> dict:
     """One page -> ``{"blocks": [...], "tight": [bbox, ...]}``."""
-    prompt = build_ocr_prompt(source_lang, target_lang, glossary, do_not_translate)
+    prompt = build_ocr_prompt(source_lang, target_lang, glossary, do_not_translate, instructions)
     obj = parse_json(provider.vision(image_path, prompt, max_tokens))
     if obj is None:  # single retry, as empty responses happen
         obj = parse_json(provider.vision(image_path, prompt, max_tokens))
@@ -144,6 +152,7 @@ def run_ocr(
                         cfg.max_tokens,
                         glossary=cfg.glossary,
                         do_not_translate=cfg.do_not_translate,
+                        instructions=cfg.llm_instructions,
                     )
                     cache.save_json(cpath, result)
                 entry = {"page": pi, "img": str(img), **result}

@@ -1,4 +1,7 @@
 // Thin typed client for the FastAPI backend.
+//
+// A random session id is kept in localStorage and sent as X-Session-Id, so the
+// server can store the BYOK key (encrypted) for this browser session.
 
 export interface DocumentOut {
   id: string;
@@ -53,25 +56,6 @@ export interface Page {
   blocks: Block[];
 }
 
-export interface JobCreate {
-  source_lang: string;
-  target_lang: string;
-  model?: string;
-  api_key?: string;
-  font_main?: string;
-  linebreak_locale?: string;
-  bilingual: boolean;
-  combine: "interleave" | "grouped" | "side_by_side";
-  dpi?: number;
-  max_px?: number;
-  figure_px?: number;
-  max_scale?: number;
-  text_width?: string;
-  glossary?: { source: string; target: string }[];
-  do_not_translate?: string[];
-  verify_math?: boolean;
-}
-
 export interface Estimate {
   model: string;
   pages: number;
@@ -97,6 +81,13 @@ export interface ModelInfo {
   inputs: string[];
 }
 
+export interface SessionOut {
+  id: string;
+  has_key: boolean;
+  hint?: string | null;
+  api_base?: string | null;
+}
+
 export interface MathCheck {
   page: number;
   ok: boolean;
@@ -112,6 +103,47 @@ export interface Report {
   };
 }
 
+export interface JobCreate {
+  source_lang: string;
+  target_lang: string;
+  model?: string;
+  api_key?: string;
+  font_main?: string;
+  linebreak_locale?: string;
+  bilingual: boolean;
+  combine: "interleave" | "grouped" | "side_by_side";
+  dpi?: number;
+  max_px?: number;
+  figure_px?: number;
+  max_scale?: number;
+  text_width?: string;
+  glossary?: { source: string; target: string }[];
+  do_not_translate?: string[];
+  llm_instructions?: string;
+  verify_math?: boolean;
+}
+
+function newSessionId(): string {
+  const c = globalThis.crypto as Crypto | undefined;
+  if (c?.randomUUID) return c.randomUUID();
+  return `s-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function sessionId(): string {
+  let v = localStorage.getItem("ocrtran_sid");
+  if (!v) {
+    v = newSessionId();
+    localStorage.setItem("ocrtran_sid", v);
+  }
+  return v;
+}
+
+const SID = sessionId();
+
+function headers(extra: Record<string, string> = {}): Record<string, string> {
+  return { "X-Session-Id": SID, ...extra };
+}
+
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) throw new Error((await r.text()) || r.statusText);
   return (await r.json()) as T;
@@ -119,39 +151,71 @@ async function j<T>(r: Response): Promise<T> {
 
 const json = (body: unknown) => ({
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: headers({ "Content-Type": "application/json" }),
   body: JSON.stringify(body),
 });
 
 export const api = {
-  listDocuments: () => fetch("/api/documents").then(j<DocumentOut[]>),
+  listDocuments: () => fetch("/api/documents", { headers: headers() }).then(j<DocumentOut[]>),
+
   upload: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    return fetch("/api/documents", { method: "POST", body: fd }).then(j<DocumentOut>);
+    return fetch("/api/documents", { method: "POST", headers: headers(), body: fd }).then(
+      j<DocumentOut>,
+    );
   },
+
   createJob: (docId: string, body: JobCreate) =>
     fetch(`/api/documents/${docId}/jobs`, json(body)).then(j<JobOut>),
-  getJob: (id: string) => fetch(`/api/jobs/${id}`).then(j<JobOut>),
-  cancel: (id: string) => fetch(`/api/jobs/${id}/cancel`, { method: "POST" }).then(j),
-  pages: (id: string) => fetch(`/api/jobs/${id}/pages`).then(j<Page[]>),
+
+  getJob: (id: string) => fetch(`/api/jobs/${id}`, { headers: headers() }).then(j<JobOut>),
+
+  cancel: (id: string) =>
+    fetch(`/api/jobs/${id}/cancel`, { method: "POST", headers: headers() }).then(j),
+
+  pages: (id: string) =>
+    fetch(`/api/jobs/${id}/pages`, { headers: headers() }).then(j<Page[]>),
+
   patchBlock: (id: string, page: number, idx: number, patch: Partial<Block>) =>
     fetch(`/api/jobs/${id}/pages/${page}/blocks/${idx}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: headers({ "Content-Type": "application/json" }),
       body: JSON.stringify(patch),
     }).then(j<Block>),
+
   reorder: (id: string, page: number, order: number[]) =>
     fetch(`/api/jobs/${id}/pages/${page}/reorder`, json({ order })).then(j),
+
   rebuild: (id: string, page: number) =>
-    fetch(`/api/jobs/${id}/pages/${page}/rebuild`, { method: "POST" }).then(j),
+    fetch(`/api/jobs/${id}/pages/${page}/rebuild`, { method: "POST", headers: headers() }).then(j),
+
   estimate: (docId: string, model: string, verifyMath: boolean) =>
-    fetch(`/api/documents/${docId}/estimate?model=${encodeURIComponent(model)}` +
-      `&verify_math=${verifyMath}`).then(j<Estimate>),
-  report: (jobId: string) => fetch(`/api/jobs/${jobId}/report`).then(j<Report>),
-  usage: () => fetch(`/api/usage`).then(j<Usage>),
+    fetch(
+      `/api/documents/${docId}/estimate?model=${encodeURIComponent(model)}&verify_math=${verifyMath}`,
+      { headers: headers() },
+    ).then(j<Estimate>),
+
+  report: (jobId: string) =>
+    fetch(`/api/jobs/${jobId}/report`, { headers: headers() }).then(j<Report>),
+
+  usage: () => fetch("/api/usage", { headers: headers() }).then(j<Usage>),
+
   models: (apiKey: string) =>
-    fetch(`/api/models?api_key=${encodeURIComponent(apiKey)}`)
+    fetch(`/api/models?api_key=${encodeURIComponent(apiKey)}`, { headers: headers() })
       .then(j<{ models: ModelInfo[] }>)
       .then((r) => r.models),
+
+  // --- session (BYOK stored server-side, encrypted) ---
+  getSession: () => fetch("/api/session", { headers: headers() }).then(j<SessionOut>),
+
+  saveKey: (apiKey: string) =>
+    fetch("/api/session", {
+      method: "PUT",
+      headers: headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ api_key: apiKey }),
+    }).then(j<SessionOut>),
+
+  clearKey: () =>
+    fetch("/api/session/key", { method: "DELETE", headers: headers() }).then(j<SessionOut>),
 };
