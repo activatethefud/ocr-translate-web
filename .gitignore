@@ -1,0 +1,48 @@
+# secrets / env
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+
+# node / frontend
+node_modules/
+frontend/dist/
+.vite/
+
+# runtime data & artifacts
+data/
+storage/
+ocr_work/
+*.sqlite
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# latex build junk
+*.aux
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# generated outputs
+*.bilingual.pdf
+*.translated.pdf
+*.zip
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
