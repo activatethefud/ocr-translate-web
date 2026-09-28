@@ -117,18 +117,24 @@ class JobRunner:
         total = max(1, n_pages)
 
         def on_event(e: Event) -> None:
+            # Only count a page as *done* when its OCR/build actually finishes,
+            # so a long model call doesn't falsely jump the bar forward.
             self._record(job_id, e)
             prog = None
-            if e.stage == "ocr" and e.status == "progress":
-                counters["ocr"] = e.index
-                prog = 0.60 * e.index / max(1, e.total)
+            if e.stage == "ocr" and e.status in ("ok", "warn") and e.page:
+                counters["ocr"] = max(counters["ocr"], e.index or e.page)
+                prog = 0.60 * counters["ocr"] / total
             elif e.stage == "build" and e.status == "ok":
                 counters["build"] += 1
                 prog = 0.60 + 0.35 * counters["build"] / total
             elif e.stage == "assemble" and e.status == "ok":
                 prog = 0.99
             if prog is not None:
-                self._update(job_id, progress=min(prog, 0.99), done_pages=counters["build"])
+                self._update(
+                    job_id,
+                    progress=min(prog, 0.99),
+                    done_pages=min(total, counters["ocr"] + counters["build"]),
+                )
 
         try:
             cfg = self.config_for(job_config, doc_id, job_id)

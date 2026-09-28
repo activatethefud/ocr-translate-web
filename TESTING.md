@@ -144,6 +144,11 @@ Each must have a named test:
     returned (only `has_key` + masked hint), cleared by `DELETE /api/session/key`.
 15. **No key, no job** — a session with no stored key and no env key returns `400`,
     not a late failure.
+16. **Progress must not lie** — do not jump to 60% at the *start* of an OCR call
+    (the bar froze for the whole ~45 s request). Advance on *completed* pages and
+    cap `done_pages` at the total.
+17. **UTC timestamps** — datetimes must be serialized with a UTC offset, otherwise
+    the browser parses naive values as local time (elapsed timer was off by hours).
 
 ## Coverage & CI
 

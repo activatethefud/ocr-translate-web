@@ -161,6 +161,18 @@ def run_ocr(
                 emit(on_event, Event("ocr", "error", base=base, page=pi, message=str(exc)))
             entries.append(entry)
             cache.save_json(paths.ocr_json(cfg.workdir, base), entries)
+            emit(
+                on_event,
+                Event(
+                    "ocr",
+                    "ok" if entry["blocks"] else "warn",
+                    base=base,
+                    page=pi,
+                    index=pi,
+                    total=len(images),
+                    data={"blocks": len(entry["blocks"]), "cached": bool(cached)},
+                ),
+            )
 
         results[base] = entries
         empties = [e["page"] for e in entries if not e["blocks"]]

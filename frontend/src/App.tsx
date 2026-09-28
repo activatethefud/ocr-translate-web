@@ -27,6 +27,28 @@ function parseGlossary(text: string): { source: string; target: string }[] {
     .map((p) => ({ source: p[0].trim(), target: p[1].trim() }));
 }
 
+function stageLabel(e: { stage: string; status: string; page?: number | null }): string {
+  const p = e.page ? ` ${e.page}` : "";
+  switch (e.stage) {
+    case "ocr":
+      return e.status === "ok" || e.status === "warn"
+        ? `read page${p}`
+        : `reading page${p} (OCR + translation)…`;
+    case "annotate":
+      return "translating in-formula text…";
+    case "build":
+      return e.status === "ok" ? `typeset page${p}` : `typesetting page${p}…`;
+    case "verify":
+      return `verifying formulas${p}…`;
+    case "assemble":
+      return "assembling PDF…";
+    case "done":
+      return "done";
+    default:
+      return `${e.stage}${p}…`;
+  }
+}
+
 export function App() {
   const [docs, setDocs] = useState<DocumentOut[]>([]);
   const [doc, setDoc] = useState<DocumentOut | null>(null);
@@ -57,6 +79,8 @@ export function App() {
   const [verifyMath, setVerifyMath] = useState(false);
   const [sessionHasKey, setSessionHasKey] = useState(false);
   const [sessionHint, setSessionHint] = useState("");
+  const [stage, setStage] = useState("");
+  const [elapsed, setElapsed] = useState(0);
 
   const esRef = useRef<EventSource | null>(null);
 
@@ -85,6 +109,19 @@ export function App() {
   const running = job && (job.status === "queued" || job.status === "running");
   const activePage = useMemo(() => pages.find((p) => p.page === active), [pages, active]);
 
+  // ticking elapsed timer while a job runs
+  useEffect(() => {
+    if (!running || !job) {
+      setElapsed(0);
+      return;
+    }
+    const start = job.started_at ? Date.parse(job.started_at) : Date.now();
+    const tick = () => setElapsed(Math.max(0, Math.round((Date.now() - start) / 1000)));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [running, job?.id, job?.started_at]);
+
   async function refreshJob() {
     if (!job) return;
     const j = await api.getJob(job.id);
@@ -102,11 +139,13 @@ export function App() {
     esRef.current = es;
     es.addEventListener("progress", (ev) => {
       const d = JSON.parse((ev as MessageEvent).data);
+      setStage(stageLabel(d));
       setEvents((p) => [...p.slice(-300), `${d.stage}/${d.status} p${d.page ?? ""} ${d.message ?? ""}`]);
     });
     es.addEventListener("end", () => {
       es.close();
       esRef.current = null;
+      setStage("");
       refreshJob();
     });
     const iv = setInterval(refreshJob, 1500);
@@ -310,9 +349,21 @@ export function App() {
                 <span className="muted">{job.mode}</span>
                 {running && <button className="ghost" onClick={() => api.cancel(job.id)}>Cancel</button>}
               </div>
-              <progress value={job.progress} max={1} />
-              <p className="muted">{job.done_pages}/{job.total_pages} pages
-                {job.cost_usd > 0 && <> · ${job.cost_usd.toFixed(4)}</>}</p>
+              <progress value={running ? undefined : job.progress} max={1} />
+              <p className="muted">
+                {running ? (
+                  <>
+                    <b>{stage || "working…"}</b> · {elapsed}s
+                    {job.progress > 0 && <> · {Math.round(job.progress * 100)}%</>} · {job.done_pages}/
+                    {job.total_pages} pages
+                  </>
+                ) : (
+                  <>
+                    {job.done_pages}/{job.total_pages} pages
+                    {job.cost_usd > 0 && <> · ${job.cost_usd.toFixed(4)}</>}
+                  </>
+                )}
+              </p>
               {job.error && <div className="error">{job.error}</div>}
               {job.artifacts.map((a) => (
                 <a key={a.id} className="download" href={a.download_url}>⬇ {a.filename}</a>

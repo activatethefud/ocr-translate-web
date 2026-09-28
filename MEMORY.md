@@ -5,6 +5,26 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
 
 ---
 
+## Session: front-end progress fix (from the /tmp/doktorske.pdf report)
+
+- **Symptom**: a 1-page job looked like it wasn't progressing in the UI.
+- **Cause 1**: the runner set `progress=0.60` at the *start* of the OCR call, so the
+  bar jumped to 60% and then froze for the ~45 s model call; `done_pages` only
+  counted finished *builds*.
+- **Cause 2**: `started_at` was serialized naive (SQLite drops tzinfo), so the
+  browser parsed it as local time — the elapsed timer read ~7200 s.
+- **Fix**: progress advances on *completed* pages (OCR "ok" per page → 0–60%,
+  build → 95%, assemble → 99%, `done_pages` capped at total). The UI now shows an
+  **indeterminate animated bar**, a live **stage label** (“reading page 1
+  (OCR + translation)…”), and a ticking **elapsed** timer; all timestamps are
+  serialized as UTC (`_iso`).
+- **Verified** with a real headless Chromium over CDP (browser-use): 1-page run
+  showed live stage + timer then completed; 3-page run progressed
+  0 → 0.20 → 0.40 → 0.72 → 1.00; downloaded artifact checked (2-page FR PDF,
+  correct translation).
+
+---
+
 ## Session: M2b — session BYOK + LLM instructions
 
 - **BYOK stored per session** server-side: `sessions` table, **Fernet-encrypted**

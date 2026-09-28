@@ -36,6 +36,9 @@ export interface JobOut {
   done_pages: number;
   cost_usd: number;
   error?: string | null;
+  created_at?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
   artifacts: ArtifactOut[];
 }
 

@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 from contextlib import asynccontextmanager
+from datetime import UTC
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
@@ -155,6 +156,16 @@ def clear_session_key(settings: Settings = Depends(_settings_dep), sid: str = De
 # --------------------------------------------------------------------------
 # serialization helpers
 # --------------------------------------------------------------------------
+def _iso(dt) -> str | None:
+    """Serialize datetimes as UTC. SQLite drops tzinfo, which made the browser
+    parse them as local time (elapsed timers were off by the UTC offset)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.isoformat()
+
+
 def _doc_out(d: db.Document) -> DocumentOut:
     return DocumentOut(
         id=d.id,
@@ -165,7 +176,7 @@ def _doc_out(d: db.Document) -> DocumentOut:
         page_h=d.page_h,
         kind=d.kind,
         size_bytes=d.size_bytes,
-        created_at=d.created_at.isoformat(),
+        created_at=_iso(d.created_at) or "",
     )
 
 
@@ -193,9 +204,9 @@ def _job_out(s, job: db.Job) -> JobOut:
         done_pages=job.done_pages,
         cost_usd=job.cost_usd,
         error=job.error,
-        created_at=job.created_at.isoformat(),
-        started_at=job.started_at.isoformat() if job.started_at else None,
-        finished_at=job.finished_at.isoformat() if job.finished_at else None,
+        created_at=_iso(job.created_at) or "",
+        started_at=_iso(job.started_at),
+        finished_at=_iso(job.finished_at),
         artifacts=arts,
     )
 

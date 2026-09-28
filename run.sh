@@ -92,7 +92,12 @@ case "$MODE" in
     ;;
 
   serve)
-    [[ -d frontend/dist ]] || build_frontend
+    # (re)build when dist is missing or any frontend source is newer
+    if [[ ! -d frontend/dist ]] || [[ -n "$(find frontend/src frontend/index.html \
+        frontend/vite.config.ts frontend/package.json -newer frontend/dist/index.html \
+        2>/dev/null | head -1)" ]]; then
+      build_frontend
+    fi
     run_api ""
     ;;
 
