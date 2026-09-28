@@ -49,6 +49,19 @@ docker compose up --build     # http://localhost:8000
 Or run locally (no Docker):
 
 ```bash
+./run.sh            # build the SPA and serve everything on http://localhost:8000
+./run.sh dev        # backend :8000 (reload) + Vite dev server :5173
+./run.sh api        # backend only
+```
+
+`run.sh` reproduces the local setup: it loads `.env`, checks dependencies, sets up
+the FastAPI/Starlette override in `backend/.deps` if needed, builds the frontend,
+and starts uvicorn (and Vite in `dev` mode). Env: `HOST`, `PORT`, `STORAGE_DIR`,
+`DS_KEY`, `DEFAULT_MODEL`, `API_BASE`.
+
+Manual backend/frontend:
+
+```bash
 # backend API (note: PYTHONPATH=.deps:. works around a local FastAPI/Starlette
 # version clash; see AGENTS.md)
 cd backend && PYTHONPATH=.deps:. uvicorn app.main:app --reload

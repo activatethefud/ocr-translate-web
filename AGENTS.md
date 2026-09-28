@@ -69,7 +69,7 @@ ocr-translate-web/
 │   │   ├── storage.py       # upload sanitization (pikepdf) + layout
 │   │   ├── schemas.py       # pydantic request/response
 │   │   └── settings.py      # env config
-│   ├── tests/               # 58 tests (unit + integration + API)
+│   ├── tests/               # 69 tests + 1 live (unit + integration + API)
 │   └── pyproject.toml
 └── frontend/                # React + Vite + TS (done, M1)
     ├── src/App.tsx          # upload · configure · progress(SSE) · review
@@ -84,9 +84,12 @@ ocr-translate-web/
 > with `PYTHONPATH=.`.
 
 ```bash
+# one-shot local run (no Docker): builds SPA, serves API + SPA on :8000
+./run.sh            # ./run.sh dev (Vite :5173 + API :8000) | ./run.sh api
+
 # engine + API tests (no network)
 cd backend
-PYTHONPATH=.deps:. pytest                  # 58 tests (11 integration)
+PYTHONPATH=.deps:. pytest                  # 69 tests + 1 live (skipped)
 PYTHONPATH=.deps:. pytest -m integration   # needs xelatex + pymupdf
 ruff check . && ruff format --check .
 
