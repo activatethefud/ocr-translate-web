@@ -5,6 +5,38 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
 
 ---
 
+## Session: M0 complete — engine packaged
+
+### Done
+- Refactored the skill pipeline into an importable package `backend/ocrtran/`:
+  `config`, `events`, `providers`, `render`, `ocr`, `annotate`, `latex`,
+  `assemble`, `verify`, `cache`, `paths`, `pipeline`, `cli`.
+- **BYOK**: `PipelineConfig.resolve_api_key(override)` — an explicit key wins,
+  otherwise falls back to the env var (for local testing). `Pipeline(cfg,
+  api_key=...)`.
+- **Output modes**: `interleave | grouped | side_by_side | translated_only`
+  (`bilingual` on/off + `combine`), implemented in `assemble.py`.
+- **Sandboxed compile**: `xelatex -no-shell-escape` + `openin_any=p` /
+  `openout_any=p`, timeout.
+- **Content-hash caching** (`cache.py`): `sha256(file)+page+model+prompt_version`.
+- **CLI** unchanged in spirit: `python -m ocrtran.cli {ocr,annot,build,assemble,run}`.
+- **48 tests** (9 integration, real xelatex/PyMuPDF), `ruff` clean. See `TESTING.md`.
+- Docs: `PLAN.md`, `TESTING.md`, `AGENTS.md`, `README.md`, `.gitignore`, `.env.example`.
+
+### Notes
+- Tests run with **system Python + `PYTHONPATH=.`** because this box has no
+  `python3-venv` (ensurepip missing). System Python already has pymupdf/requests/
+  pillow/pytest/ruff.
+- Commit: "M0: engine package …" (see git log).
+
+### Next: M1 — local web MVP
+- FastAPI (`backend/app/`) + SQLite + filesystem + SSE; React SPA (`frontend/`).
+- Upload → configure (BYOK key in UI, languages, `bilingual`/`combine`) → progress
+  → **preview + simple block-order editor** → download.
+- Docker Compose (api + worker + frontend), upload sanitization (qpdf), rate/cost caps.
+
+---
+
 ## Session: building the engine + planning the web app
 
 ### Where we are

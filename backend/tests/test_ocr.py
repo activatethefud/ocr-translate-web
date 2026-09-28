@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+from ocrtran.ocr import build_ocr_prompt, ocr_image, parse_json
+from tests.conftest import FakeProvider
+
+
+def test_parse_json_plain():
+    assert parse_json('{"a": 1}') == {"a": 1}
+
+
+def test_parse_json_fenced():
+    assert parse_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_parse_json_with_prose():
+    assert parse_json('Here you go: {"a": 1} done') == {"a": 1}
+
+
+def test_parse_json_bad():
+    assert parse_json("not json") is None
+    assert parse_json(None) is None
+
+
+def test_prompt_placeholders():
+    p = build_ocr_prompt("Serbian", "French")
+    assert "Serbian" in p and "French" in p and "__SRC__" not in p and "__TGT__" not in p
+
+
+def test_ocr_image_blocks(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"not a real image")  # never decoded by the fake provider
+    result = ocr_image(FakeProvider(), img, "Serbian", "French")
+    assert [b["type"] for b in result["blocks"]] == ["heading", "prose", "math"]
+    assert result["tight"] == []
+
+
+def test_ocr_image_with_figures(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    blocks = [{"type": "figure", "description": "graph", "bbox": [0, 0, 1, 1]}]
+    prov = FakeProvider(blocks=blocks, tight=[[0.1, 0.1, 0.5, 0.5]])
+    result = ocr_image(prov, img, "Serbian", "French")
+    assert result["tight"] == [[0.1, 0.1, 0.5, 0.5]]

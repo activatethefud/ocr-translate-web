@@ -1,7 +1,8 @@
 # AGENTS.md
 
 Guidance for coding agents (and humans) working in this repository.
-Read `PLAN.md` for the design and `MEMORY.md` for session context.
+Read `PLAN.md` for the design, `TESTING.md` for the test strategy, and
+`MEMORY.md` for session context.
 
 ## What this is
 
@@ -18,8 +19,11 @@ refactor it into the importable `ocrtran/` package.
 
 ## Non-negotiable rules
 
-1. **Never commit secrets.** API keys live in `.env` (git-ignored) and are read
-   from env at runtime. Never log or return keys to the frontend.
+1. **Never commit secrets.** API keys are **BYOK** (supplied per user/session,
+   encrypted at rest). A server-side env key is a **testing fallback** only. Keys
+   are read at runtime, never logged, never returned to the frontend.
+   The engine accepts an explicit key: `Pipeline(cfg, api_key=...)`.
+   (`PipelineConfig.resolve_api_key(override)` — override wins, env falls back.)
 2. **LaTeX is untrusted code.** Compile with `-no-shell-escape`,
    `openin_any=p`, `openout_any=p`, in a per-job temp dir, as a non-root user,
    with timeouts and ulimits. See `PLAN.md` §11.
@@ -38,47 +42,54 @@ ocr-translate-web/
 ├── AGENTS.md                # this file
 ├── MEMORY.md                # session / context log
 ├── PLAN.md                  # design + decisions
+├── TESTING.md               # test strategy
 ├── README.md                # user-facing intro + quickstart
-├── docker-compose.yml       # api + worker (+ build frontend)
+├── docker-compose.yml       # api + worker (+ build frontend)   [M1]
 ├── .env.example             # config template (no secrets)
 ├── backend/
-│   ├── ocrtran/             # the engine package (refactored from the skill)
-│   │   ├── render.py
-│   │   ├── providers.py     # openai-compatible / deepseek / openrouter
-│   │   ├── ocr.py
-│   │   ├── annotate.py
-│   │   ├── latex.py
-│   │   ├── assemble.py      # interleave | grouped | side-by-side
-│   │   ├── verify.py
-│   │   ├── pipeline.py      # orchestrator: events + cancellation
-│   │   └── config.py
-│   ├── app/                 # FastAPI: routes, models, db, jobs, storage
-│   ├── tests/
+│   ├── ocrtran/             # ENGINE (done, M0) — importable package
+│   │   ├── config.py        # PipelineConfig (BYOK, output modes)
+│   │   ├── events.py        # Event + CancelToken
+│   │   ├── providers.py     # OpenAI-compatible / DeepSeek adapter
+│   │   ├── render.py        # pages + figure crops (PyMuPDF)
+│   │   ├── ocr.py           # vision call -> blocks
+│   │   ├── annotate.py      # translate words inside \text{...}
+│   │   ├── latex.py         # standalone XeLaTeX compile (sandboxed)
+│   │   ├── assemble.py      # interleave|grouped|side_by_side|translated_only
+│   │   ├── verify.py        # empty pages, counts, leftovers
+│   │   ├── cache.py         # content-hash caching
+│   │   ├── paths.py         # artifact layout
+│   │   ├── pipeline.py      # orchestrator
+│   │   └── cli.py           # thin CLI over the engine
+│   ├── app/                 # FastAPI: routes, models, db, jobs, storage  [M1]
+│   ├── tests/               # 48 tests (unit + integration)
 │   └── pyproject.toml
-└── frontend/                # React + Vite + TS + Tailwind
+└── frontend/                # React + Vite + TS + Tailwind            [M1]
     ├── src/
     └── package.json
 ```
 
-## Dev commands (once scaffolded)
+## Dev commands
+
+> On this machine there is **no `python3-venv`** (`ensurepip` missing); the system
+> Python already has `pymupdf`, `requests`, `pillow`, `pytest`, `ruff`. Run tests
+> with `PYTHONPATH=.`.
 
 ```bash
-# backend
-cd backend && python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-uvicorn app.main:app --reload            # api
-python -m ocrtran.cli run --config x.json   # engine via CLI (unchanged behavior)
+# engine tests (no network)
+cd backend
+PYTHONPATH=. pytest                       # 48 tests (9 integration)
+PYTHONPATH=. pytest -m integration        # needs xelatex + pymupdf
+ruff check . && ruff format --check .
 
-# frontend
+# engine CLI
+PYTHONPATH=. python -m ocrtran.cli run --config config.json
+
+# backend / frontend (M1+)
+uvicorn app.main:app --reload             # api
 cd frontend && npm install && npm run dev
 
-# tests / lint
-pytest
-ruff check . && ruff format .
-npm run lint && npm run build
-
 # docker
-cp .env.example .env        # then edit
 docker compose up --build
 ```
 

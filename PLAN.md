@@ -248,7 +248,11 @@ model-generated and user-editable, so treat it as **untrusted**.
 
 **M0 — Engine packaging (1–2 days)**
 - Split into `ocrtran/` package; CLI unchanged in behaviour; add event callbacks
-  and cancellation. Tests around the known pitfalls.
+  and cancellation. Tests around the known pitfalls (see [`TESTING.md`](TESTING.md)).
+  - ✅ done: `backend/ocrtran/` with `render/ocr/annotate/latex/assemble/verify/`
+    `pipeline/config/events/cache/paths/providers`, CLI, 48 tests (9 integration).
+  - ✅ BYOK: `PipelineConfig.resolve_api_key(override)` — explicit key wins, env
+    falls back for testing.
 
 **M1 — Local web MVP (3–5 days)**
 - FastAPI + SQLite + FS, one job at a time, SSE progress, download bilingual /
@@ -279,7 +283,10 @@ model-generated and user-editable, so treat it as **untrusted**.
 - **Output options:** first-class `bilingual` on/off and `combine` mode:
   `interleave`, `grouped`, `side-by-side`; plus `translated-only`. Configurable
   per job, exposed in the UI.
-- **API keys:** server-side from env (`.env`, never committed). Not BYO for now.
+- **API keys:** **BYOK (bring-your-own-key)** is the primary model — a key can be
+  supplied per user/session (encrypted at rest, never returned to the client).
+  A server-side env key (`.env`, never committed) is the **fallback used for
+  local testing** only.
 - **Providers:** DeepSeek first + a generic **OpenAI-compatible** adapter so
   OpenRouter / OpenAI / local endpoints work by config.
 - **Deployment:** **Docker Compose** (api + worker + optional frontend build),

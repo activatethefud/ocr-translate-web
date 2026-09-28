@@ -20,6 +20,7 @@ survive, and diagrams are cropped from the original and re-inserted.
 ## Docs
 
 - [`PLAN.md`](PLAN.md) — design, architecture, features, milestones, decisions.
+- [`TESTING.md`](TESTING.md) — test strategy, layers, failure injection, security tests.
 - [`AGENTS.md`](AGENTS.md) — guidance for coding agents (rules, layout, commands).
 - [`MEMORY.md`](MEMORY.md) — session/context log.
 
