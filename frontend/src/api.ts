@@ -124,6 +124,11 @@ export interface JobCreate {
   do_not_translate?: string[];
   llm_instructions?: string;
   verify_math?: boolean;
+  pages?: string;
+  unprocessed?: "original" | "skip";
+  output_page_size?: "match" | "a4" | "letter";
+  scale_mode?: "fill" | "fit";
+  concurrency?: number;
 }
 
 function newSessionId(): string {
@@ -193,9 +198,10 @@ export const api = {
   rebuild: (id: string, page: number) =>
     fetch(`/api/jobs/${id}/pages/${page}/rebuild`, { method: "POST", headers: headers() }).then(j),
 
-  estimate: (docId: string, model: string, verifyMath: boolean) =>
+  estimate: (docId: string, model: string, verifyMath: boolean, pages: string) =>
     fetch(
-      `/api/documents/${docId}/estimate?model=${encodeURIComponent(model)}&verify_math=${verifyMath}`,
+      `/api/documents/${docId}/estimate?model=${encodeURIComponent(model)}` +
+        `&verify_math=${verifyMath}&pages=${encodeURIComponent(pages || "all")}`,
       { headers: headers() },
     ).then(j<Estimate>),
 

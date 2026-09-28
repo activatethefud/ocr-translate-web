@@ -19,24 +19,34 @@ def page_size(pdf: str | Path, page_no: int) -> tuple[float, float]:
         return r.width, r.height
 
 
-def render_pages(pdf: str | Path, outdir: str | Path, dpi: int = 150, max_px: int = 1800) -> list[Path]:
-    """Render every page to ``outdir/p-NN.png``.
+def render_pages(
+    pdf: str | Path,
+    outdir: str | Path,
+    dpi: int = 150,
+    max_px: int = 1800,
+    pages: list[int] | None = None,
+) -> list[tuple[int, Path]]:
+    """Render pages to ``outdir/p-NN.png`` and return ``[(page_no, path), ...]``.
 
-    ``max_px`` caps the longest side so huge scanned pages (page points in the
-    thousands) don't produce enormous images.
+    ``max_px`` caps the longest side so huge scanned pages don't produce enormous
+    images; ``pages`` (1-based) restricts which pages are rendered.
     """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    made: list[Path] = []
+    made: list[tuple[int, Path]] = []
+    wanted = set(pages) if pages is not None else None
     with fitz.open(pdf) as doc:
         for i, page in enumerate(doc):
+            pno = i + 1
+            if wanted is not None and pno not in wanted:
+                continue
             zoom = dpi / 72.0
             if max_px:
                 zoom = min(zoom, max_px / max(page.rect.width, page.rect.height))
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-            path = outdir / f"p-{i + 1:02d}.png"
+            path = outdir / f"p-{pno:02d}.png"
             pix.save(str(path))
-            made.append(path)
+            made.append((pno, path))
     return made
 
 

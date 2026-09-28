@@ -20,6 +20,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from ocrtran import latex, paths
 from ocrtran.cache import load_json, save_json
+from ocrtran.pages import PageSpecError, parse_page_spec
 from ocrtran.pricing import estimate_for_pages
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
@@ -299,6 +300,7 @@ def estimate_document(
     doc_id: str,
     model: str | None = None,
     verify_math: bool = False,
+    pages: str = "all",
     settings: Settings = Depends(_settings_dep),
 ):
     s = db.get_session()
@@ -306,7 +308,10 @@ def estimate_document(
         doc = s.get(db.Document, doc_id)
         if not doc:
             raise HTTPException(404, "document not found")
-        n_pages = doc.n_pages
+        try:
+            n_pages = len(parse_page_spec(pages, doc.n_pages))
+        except PageSpecError as exc:
+            raise HTTPException(422, str(exc)) from exc
     finally:
         s.close()
     return EstimateOut(
@@ -341,6 +346,11 @@ def create_job(
         if not api_key:
             raise HTTPException(400, f"no API key: save one for this session or set ${settings.api_key_env}")
         cfg["model"] = body.model or settings.default_model
+        cfg["concurrency"] = body.concurrency or settings.page_concurrency
+        try:
+            selected = parse_page_spec(body.pages, doc.n_pages)
+        except PageSpecError as exc:
+            raise HTTPException(422, str(exc)) from exc
         job = db.Job(
             document_id=doc_id,
             config=cfg,
@@ -349,7 +359,7 @@ def create_job(
             source_lang=body.source_lang,
             target_lang=body.target_lang,
             mode="translated_only" if not body.bilingual else body.combine,
-            total_pages=doc.n_pages,
+            total_pages=len(selected),
         )
         s.add(job)
         s.commit()

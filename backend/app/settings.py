@@ -33,6 +33,7 @@ class Settings:
     max_pages: int = 1000
     max_job_usd: float = 2.0
     worker_concurrency: int = 3
+    page_concurrency: int = 4
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173"])
 
     @property
@@ -66,6 +67,7 @@ def load_settings() -> Settings:
         max_pages=_int("MAX_PAGES", 1000),
         max_job_usd=_float("MAX_JOB_USD", 2.0),
         worker_concurrency=_int("WORKER_CONCURRENCY", 3),
+        page_concurrency=_int("PAGE_CONCURRENCY", 4),
         cors_origins=[o.strip() for o in origins.split(",") if o.strip()],
     )
 

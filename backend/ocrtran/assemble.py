@@ -3,9 +3,14 @@
 Output modes (``PipelineConfig.output_mode``):
 
 * ``interleave``      original, translation, original, translation, ...
-* ``grouped``         all originals, then all translations
+* ``grouped``         originals, then translations
 * ``side_by_side``    both languages on one page (original left, translation right)
 * ``translated_only`` just the translation
+
+Page control: ``cfg.pages`` selects which pages are translated; ``cfg.unprocessed``
+decides what happens to the rest (``original`` = keep the page, ``skip`` = omit).
+``cfg.output_page_size`` (match/a4/letter) and ``cfg.scale_mode`` (fill/fit)
+control the translated pages.
 """
 
 from __future__ import annotations
@@ -17,26 +22,36 @@ import fitz
 from . import paths
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
+from .pages import parse_page_spec
+
+A4 = (595.28, 841.89)
+LETTER = (612.0, 792.0)
 
 
-def _fit_scale(area: fitz.Rect, content: fitz.Rect, max_scale: float) -> float:
-    sc = min(area.width / content.width, area.height / content.height)
+def _output_size(cfg: PipelineConfig, src_w: float, src_h: float) -> tuple[float, float]:
+    if cfg.output_page_size == "a4":
+        return A4
+    if cfg.output_page_size == "letter":
+        return LETTER
+    return (src_w, src_h)
+
+
+def _eff_max_scale(cfg: PipelineConfig) -> float:
+    """``fit`` never enlarges; ``fill`` enlarges to fill (capped by max_scale)."""
+    return 1.0 if cfg.scale_mode == "fit" else cfg.max_scale
+
+
+def _place(page: fitz.Page, doc: fitz.Document, pno: int, area: fitz.Rect, max_scale: float) -> None:
+    r = doc[pno].rect
+    sc = min(area.width / r.width, area.height / r.height)
     if max_scale:
         sc = min(sc, max_scale)
-    return sc
-
-
-def _place(
-    page: fitz.Page, content_pdf: fitz.Document, area: fitz.Rect, margin: float, max_scale: float
-) -> None:
-    r = content_pdf[0].rect
-    sc = _fit_scale(area, r, max_scale)
     w, h = r.width * sc, r.height * sc
     x0 = area.x0 + (area.width - w) / 2
-    y0 = area.y0  # top-aligned; content fills the page
+    y0 = area.y0
     if y0 + h > area.y1:
         y0 = area.y1 - h
-    page.show_pdf_page(fitz.Rect(x0, y0, x0 + w, y0 + h), content_pdf, 0)
+    page.show_pdf_page(fitz.Rect(x0, y0, x0 + w, y0 + h), doc, pno)
 
 
 def _translated_pdf(cfg: PipelineConfig, base: str, page: int) -> Path | None:
@@ -53,17 +68,17 @@ def _add_translation(
     src: fitz.Document,
     cfg: PipelineConfig,
     base: str,
-    i: int,
+    page_no: int,
     size: tuple[float, float],
     area: fitz.Rect,
 ) -> None:
-    tp = _translated_pdf(cfg, base, i + 1)
+    tp = _translated_pdf(cfg, base, page_no)
     if tp is None:
-        out.insert_pdf(src, from_page=i, to_page=i)  # graceful fallback
+        _add_original(out, src, page_no - 1)  # graceful fallback
         return
     cd = fitz.open(str(tp))
     page = out.new_page(width=size[0], height=size[1])
-    _place(page, cd, area, cfg.margin_pt, cfg.max_scale)
+    _place(page, cd, 0, area, _eff_max_scale(cfg))
     cd.close()
 
 
@@ -82,36 +97,49 @@ def assemble(
         base = Path(source).stem
         src = fitz.open(source)
         out = fitz.open()
-        W, H = src[0].rect.width, src[0].rect.height
-        margin = cfg.margin_pt
-        area = fitz.Rect(margin, margin, W - margin, H - margin)
-        size = (W, H)
         n = src.page_count
+        selected = parse_page_spec(cfg.pages, n)
+        keep_unselected = cfg.unprocessed == "original"
+
+        W, H = src[0].rect.width, src[0].rect.height
+        outW, outH = _output_size(cfg, W, H)
+        margin = cfg.margin_pt
+        size = (outW, outH)
+        area = fitz.Rect(margin, margin, outW - margin, outH - margin)
 
         if mode == "interleave":
             for i in range(n):
-                _add_original(out, src, i)
-                _add_translation(out, src, cfg, base, i, size, area)
+                p = i + 1
+                if p in selected:
+                    _add_original(out, src, i)
+                    _add_translation(out, src, cfg, base, p, size, area)
+                elif keep_unselected:
+                    _add_original(out, src, i)
         elif mode == "grouped":
-            for i in range(n):
+            orig_pages = range(n) if keep_unselected else [p - 1 for p in selected]
+            for i in orig_pages:
                 _add_original(out, src, i)
-            for i in range(n):
-                _add_translation(out, src, cfg, base, i, size, area)
+            for p in selected:
+                _add_translation(out, src, cfg, base, p, size, area)
         elif mode == "translated_only":
-            for i in range(n):
-                _add_translation(out, src, cfg, base, i, size, area)
+            for p in selected:
+                _add_translation(out, src, cfg, base, p, size, area)
         elif mode == "side_by_side":
-            half = (W - 3 * margin) / 2
-            left = fitz.Rect(margin, margin, margin + half, H - margin)
-            right = fitz.Rect(W - margin - half, margin, W - margin, H - margin)
+            half = (outW - 3 * margin) / 2
+            left = fitz.Rect(margin, margin, margin + half, outH - margin)
+            right = fitz.Rect(outW - margin - half, margin, outW - margin, outH - margin)
             for i in range(n):
-                page = out.new_page(width=W, height=H)
-                page.show_pdf_page(left, src, i)  # original left
-                tp = _translated_pdf(cfg, base, i + 1)
-                if tp is not None:
-                    cd = fitz.open(str(tp))
-                    _place(page, cd, right, margin, cfg.max_scale)
-                    cd.close()
+                p = i + 1
+                if p in selected:
+                    page = out.new_page(width=outW, height=outH)
+                    _place(page, src, i, left, _eff_max_scale(cfg))  # original left
+                    tp = _translated_pdf(cfg, base, p)
+                    if tp is not None:
+                        cd = fitz.open(str(tp))
+                        _place(page, cd, 0, right, _eff_max_scale(cfg))
+                        cd.close()
+                elif keep_unselected:
+                    _add_original(out, src, i)
 
         outpath = paths.output_pdf(cfg.workdir, base, cfg.target_lang, mode)
         outpath.parent.mkdir(parents=True, exist_ok=True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from ocrtran import Pipeline, PipelineConfig
@@ -35,6 +36,8 @@ class JobRunner:
         self.settings = settings
         self.pool = ThreadPoolExecutor(max_workers=settings.worker_concurrency)
         self.tokens: dict[str, CancelToken] = {}
+        # events arrive from parallel page workers -> serialize DB writes
+        self._db_lock = threading.Lock()
 
     # -- public --------------------------------------------------------
     def submit(self, job_id: str, api_key: str | None) -> None:
@@ -53,33 +56,35 @@ class JobRunner:
 
     # -- persistence helpers ------------------------------------------
     def _record(self, job_id: str, e: Event) -> None:
-        s = db.get_session()
-        try:
-            s.add(
-                db.EventRecord(
-                    job_id=job_id,
-                    stage=e.stage,
-                    status=e.status,
-                    base=e.base,
-                    page=e.page,
-                    message=e.message,
-                    data=e.data or {},
+        with self._db_lock:
+            s = db.get_session()
+            try:
+                s.add(
+                    db.EventRecord(
+                        job_id=job_id,
+                        stage=e.stage,
+                        status=e.status,
+                        base=e.base,
+                        page=e.page,
+                        message=e.message,
+                        data=e.data or {},
+                    )
                 )
-            )
-            s.commit()
-        finally:
-            s.close()
+                s.commit()
+            finally:
+                s.close()
 
     def _update(self, job_id: str, **fields) -> None:
-        s = db.get_session()
-        try:
-            job = s.get(db.Job, job_id)
-            if job:
-                for k, v in fields.items():
-                    setattr(job, k, v)
-                s.commit()
-        finally:
-            s.close()
+        with self._db_lock:
+            s = db.get_session()
+            try:
+                job = s.get(db.Job, job_id)
+                if job:
+                    for k, v in fields.items():
+                        setattr(job, k, v)
+                    s.commit()
+            finally:
+                s.close()
 
     # -- config --------------------------------------------------------
     def config_for(self, job_row: dict, doc_id: str, job_id: str) -> PipelineConfig:
@@ -115,26 +120,28 @@ class JobRunner:
         self._update(job_id, status="running", started_at=db.utcnow())
         counters = {"ocr": 0, "build": 0}
         total = max(1, n_pages)
+        state_lock = threading.Lock()
 
         def on_event(e: Event) -> None:
             # Only count a page as *done* when its OCR/build actually finishes,
             # so a long model call doesn't falsely jump the bar forward.
             self._record(job_id, e)
-            prog = None
-            if e.stage == "ocr" and e.status in ("ok", "warn") and e.page:
-                counters["ocr"] = max(counters["ocr"], e.index or e.page)
-                prog = 0.60 * counters["ocr"] / total
-            elif e.stage == "build" and e.status == "ok":
-                counters["build"] += 1
-                prog = 0.60 + 0.35 * counters["build"] / total
-            elif e.stage == "assemble" and e.status == "ok":
-                prog = 0.99
-            if prog is not None:
-                self._update(
-                    job_id,
-                    progress=min(prog, 0.99),
-                    done_pages=min(total, counters["ocr"] + counters["build"]),
-                )
+            with state_lock:
+                prog = None
+                if e.stage == "ocr" and e.status in ("ok", "warn") and e.page:
+                    counters["ocr"] = max(counters["ocr"], e.index or e.page)
+                    prog = 0.60 * counters["ocr"] / total
+                elif e.stage == "build" and e.status == "ok":
+                    counters["build"] += 1
+                    prog = 0.60 + 0.35 * counters["build"] / total
+                elif e.stage == "assemble" and e.status == "ok":
+                    prog = 0.99
+                if prog is not None:
+                    self._update(
+                        job_id,
+                        progress=min(prog, 0.99),
+                        done_pages=min(total, counters["ocr"] + counters["build"]),
+                    )
 
         try:
             cfg = self.config_for(job_config, doc_id, job_id)

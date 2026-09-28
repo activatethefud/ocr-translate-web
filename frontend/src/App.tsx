@@ -77,6 +77,11 @@ export function App() {
   const [doNotTranslate, setDoNotTranslate] = useState("");
   const [llmInstructions, setLlmInstructions] = useState("");
   const [verifyMath, setVerifyMath] = useState(false);
+  const [pagesSpec, setPagesSpec] = useState("all");
+  const [unprocessed, setUnprocessed] = useState<"original" | "skip">("original");
+  const [outputPageSize, setOutputPageSize] = useState<"match" | "a4" | "letter">("match");
+  const [scaleMode, setScaleMode] = useState<"fill" | "fit">("fill");
+  const [pageConcurrency, setPageConcurrency] = useState(4);
   const [sessionHasKey, setSessionHasKey] = useState(false);
   const [sessionHint, setSessionHint] = useState("");
   const [stage, setStage] = useState("");
@@ -103,8 +108,8 @@ export function App() {
 
   useEffect(() => {
     if (!doc) { setEstimate(null); return; }
-    api.estimate(doc.id, model, verifyMath).then(setEstimate).catch(() => setEstimate(null));
-  }, [doc?.id, model, verifyMath]);
+    api.estimate(doc.id, model, verifyMath, pagesSpec).then(setEstimate).catch(() => setEstimate(null));
+  }, [doc?.id, model, verifyMath, pagesSpec]);
 
   const running = job && (job.status === "queued" || job.status === "running");
   const activePage = useMemo(() => pages.find((p) => p.page === active), [pages, active]);
@@ -174,6 +179,11 @@ export function App() {
       do_not_translate: doNotTranslate.split(",").map((s) => s.trim()).filter(Boolean),
       llm_instructions: llmInstructions,
       verify_math: verifyMath,
+      pages: pagesSpec,
+      unprocessed,
+      output_page_size: outputPageSize,
+      scale_mode: scaleMode,
+      concurrency: pageConcurrency,
     };
     if (!bilingual) body.combine = "interleave";
     try {
@@ -318,6 +328,39 @@ export function App() {
           <label className="check">
             <input type="checkbox" checked={verifyMath} onChange={(e) => setVerifyMath(e.target.checked)} />
             verify formulas (+1 model call per page)
+          </label>
+          <h2>Page control</h2>
+          <label>Pages (blank = all)
+            <input value={pagesSpec} placeholder="all · 1-3,5,8 · 3- · -4"
+                   onChange={(e) => setPagesSpec(e.target.value)} />
+          </label>
+          <div className="row">
+            <label>Unselected pages
+              <select value={unprocessed}
+                      onChange={(e) => setUnprocessed(e.target.value as "original" | "skip")}>
+                <option value="original">keep original page</option>
+                <option value="skip">skip / omit</option>
+              </select>
+            </label>
+            <label>Output page size
+              <select value={outputPageSize}
+                      onChange={(e) => setOutputPageSize(e.target.value as "match" | "a4" | "letter")}>
+                <option value="match">match source</option>
+                <option value="a4">A4</option>
+                <option value="letter">Letter</option>
+              </select>
+            </label>
+          </div>
+          <label>Content fit
+            <select value={scaleMode}
+                    onChange={(e) => setScaleMode(e.target.value as "fill" | "fit")}>
+              <option value="fill">fill the page (may enlarge)</option>
+              <option value="fit">fit (never enlarge)</option>
+            </select>
+          </label>
+          <label>Parallel pages (speed)
+            <input type="number" min={1} max={8} value={pageConcurrency}
+                   onChange={(e) => setPageConcurrency(Math.max(1, Math.min(8, Number(e.target.value) || 1)))} />
           </label>
           <label>Glossary (one <code>source =&gt; target</code> per line)
             <textarea value={glossaryText} placeholder={"Prava => droite\nTalesova teorema => théorème de Thalès"}

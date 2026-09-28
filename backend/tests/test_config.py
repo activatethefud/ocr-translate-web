@@ -51,6 +51,15 @@ def test_validate_requires_sources():
         PipelineConfig(sources=[]).validate()
 
 
+def test_validate_page_options():
+    with pytest.raises(ConfigError):
+        PipelineConfig(sources=["a.pdf"], output_page_size="b5").validate()
+    with pytest.raises(ConfigError):
+        PipelineConfig(sources=["a.pdf"], scale_mode="stretch").validate()
+    with pytest.raises(ConfigError):
+        PipelineConfig(sources=["a.pdf"], unprocessed="delete").validate()
+
+
 def test_resolve_sources(tmp_path):
     (tmp_path / "a.pdf").write_bytes(b"x")
     (tmp_path / "b.pdf").write_bytes(b"x")

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 
 from . import cache, paths, render
+from .concurrency import parallel_map
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
+from .pages import parse_page_spec
 from .providers import Provider
 
 # Prompts use plain placeholders (not str.format) to avoid brace-escaping bugs.
@@ -123,15 +126,33 @@ def run_ocr(
     for si, source in enumerate(sources):
         base = Path(source).stem
         doc_sha = cache.file_sha256(source)
-        images = render.render_pages(source, paths.pages_dir(cfg.workdir, base), cfg.dpi, cfg.max_px)
+        n_pages = render.page_count(source)
+        selected = parse_page_spec(cfg.pages, n_pages)
+        images = render.render_pages(
+            source, paths.pages_dir(cfg.workdir, base), cfg.dpi, cfg.max_px, pages=selected
+        )
         prior = {e["page"]: e for e in (cache.load_json(paths.ocr_json(cfg.workdir, base)) or [])}
-        entries: list[dict] = []
+        total_pages = len(images)
+        collected: dict[int, dict] = {}
+        lock = threading.Lock()
+        ocr_path = paths.ocr_json(cfg.workdir, base)
 
-        for pi, img in enumerate(images, start=1):
+        def process(
+            task: tuple[int, int, object],
+            *,
+            base=base,
+            doc_sha=doc_sha,
+            prior=prior,
+            total_pages=total_pages,
+            lock=lock,
+            collected=collected,
+            ocr_path=ocr_path,
+        ) -> dict:
+            idx, pi, img = task
             cancel.check()
             emit(
                 on_event,
-                Event("ocr", "progress", base=base, page=pi, index=pi, total=len(images), message="page"),
+                Event("ocr", "progress", base=base, page=pi, index=idx, total=total_pages, message="page"),
             )
             key = cache.ocr_cache_key(doc_sha, pi, cfg.model, cfg.prompt_version)
             cpath = cache.cache_path(cfg.workdir, key)
@@ -159,8 +180,9 @@ def run_ocr(
             except Exception as exc:  # noqa: BLE001 - recorded per page
                 entry = {"page": pi, "img": str(img), "blocks": [], "tight": [], "error": str(exc)}
                 emit(on_event, Event("ocr", "error", base=base, page=pi, message=str(exc)))
-            entries.append(entry)
-            cache.save_json(paths.ocr_json(cfg.workdir, base), entries)
+            with lock:
+                collected[pi] = entry
+                cache.save_json(ocr_path, [collected[k] for k in sorted(collected)])
             emit(
                 on_event,
                 Event(
@@ -168,12 +190,16 @@ def run_ocr(
                     "ok" if entry["blocks"] else "warn",
                     base=base,
                     page=pi,
-                    index=pi,
-                    total=len(images),
+                    index=idx,
+                    total=total_pages,
                     data={"blocks": len(entry["blocks"]), "cached": bool(cached)},
                 ),
             )
+            return entry
 
+        tasks = [(idx, pi, img) for idx, (pi, img) in enumerate(images, start=1)]
+        parallel_map(process, tasks, cfg.concurrency)
+        entries = [collected[k] for k in sorted(collected)]
         results[base] = entries
         empties = [e["page"] for e in entries if not e["blocks"]]
         emit(

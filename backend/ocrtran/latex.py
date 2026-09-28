@@ -9,9 +9,11 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
 from pathlib import Path
 
 from . import cache, paths, render
+from .concurrency import parallel_map
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
 
@@ -177,18 +179,32 @@ def run_build(
         source_pdf = source_map[base]
         tdir = paths.tex_dir(cfg.workdir, base)
         tdir.mkdir(parents=True, exist_ok=True)
+        lock = threading.Lock()
         pdfs: list[Path] = []
-        for entry in entries:
+
+        def build_one(
+            entry: dict,
+            *,
+            base=base,
+            source_pdf=source_pdf,
+            tdir=tdir,
+            lock=lock,
+            pdfs=pdfs,
+        ) -> None:
             cancel.check()
             page = entry["page"]
             tex = build_tex(cfg, base, source_pdf, entry)
             tex_path = paths.page_tex(cfg.workdir, base, page)
+            # Distinct pNN.tex basenames mean parallel compiles share the dir safely.
             tex_path.write_text(tex)
             ok, log = compile_tex(tex_path, tdir)
             if ok:
-                pdfs.append(paths.page_pdf(cfg.workdir, base, page))
+                with lock:
+                    pdfs.append(paths.page_pdf(cfg.workdir, base, page))
                 emit(on_event, Event("build", "ok", base=base, page=page))
             else:
                 emit(on_event, Event("build", "error", base=base, page=page, message=log))
-        out[base] = pdfs
+
+        parallel_map(build_one, entries, cfg.concurrency)
+        out[base] = sorted(pdfs, key=lambda p: p.name)
     return out

@@ -37,6 +37,7 @@ class PipelineConfig:
     # --- translation / typesetting ---
     source_lang: str = "auto"
     target_lang: str = "English"
+    concurrency: int = 4  # pages translated in parallel (1 = sequential)
     glossary: list[dict[str, str]] = field(default_factory=list)
     do_not_translate: list[str] = field(default_factory=list)
     llm_instructions: str = ""
@@ -52,6 +53,12 @@ class PipelineConfig:
     max_scale: float = 0.0  # 0 = no cap (enlarge to fill the page)
     bilingual: bool = True
     combine: str = "interleave"  # interleave | grouped | side_by_side
+
+    # --- page control ---
+    pages: str = "all"  # "all" | "1-5" | "2,4,7-9" | "3-" | "-4"
+    unprocessed: str = "original"  # original | skip (what to do with unselected pages)
+    output_page_size: str = "match"  # match | a4 | letter
+    scale_mode: str = "fill"  # fill (enlarge to fill) | fit (never upscale)
 
     # --- behaviour ---
     force: bool = False
@@ -103,6 +110,12 @@ class PipelineConfig:
             raise ConfigError("dpi must be positive")
         if self.output_mode not in COMBINE_MODES + ("translated_only",):
             raise ConfigError(f"bad output mode {self.output_mode!r}")
+        if self.unprocessed not in ("original", "skip"):
+            raise ConfigError("unprocessed must be 'original' or 'skip'")
+        if self.output_page_size not in ("match", "a4", "letter"):
+            raise ConfigError("output_page_size must be match, a4 or letter")
+        if self.scale_mode not in ("fill", "fit"):
+            raise ConfigError("scale_mode must be 'fill' or 'fit'")
 
     # ------------------------------------------------------------------
     def resolve_sources(self) -> list[str]:

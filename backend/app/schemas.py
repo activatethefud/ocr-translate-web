@@ -34,6 +34,12 @@ class JobCreate(BaseModel):
     do_not_translate: list[str] = []
     llm_instructions: str = ""
     verify_math: bool = False
+    # page control
+    pages: str = "all"
+    unprocessed: Literal["original", "skip"] = "original"
+    output_page_size: Literal["match", "a4", "letter"] = "match"
+    scale_mode: Literal["fill", "fit"] = "fill"
+    concurrency: int | None = None  # pages translated in parallel
 
 
 class SessionUpdate(BaseModel):

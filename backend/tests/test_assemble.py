@@ -48,3 +48,45 @@ def test_assemble_falls_back_when_translation_missing(tiny_pdf, tmp_path):
     out = fitz.open(outputs[tiny_pdf.stem])
     assert out.page_count == 2
     out.close()
+
+
+def _prep(tiny_pdf, tmp_path, **kwargs):
+    workdir = tmp_path / "work"
+    base = tiny_pdf.stem
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(workdir), **kwargs)
+    for p in (1, 2):
+        make_translated_page(paths.page_pdf(workdir, base, p), f"FR {p}")
+    return cfg, base
+
+
+@pytest.mark.integration
+def test_assemble_page_selection_skip(tiny_pdf, tmp_path):
+    cfg, base = _prep(tiny_pdf, tmp_path, combine="interleave", pages="1", unprocessed="skip")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 2  # orig 1 + translation 1
+    out.close()
+
+
+@pytest.mark.integration
+def test_assemble_page_selection_keep_original(tiny_pdf, tmp_path):
+    cfg, base = _prep(tiny_pdf, tmp_path, combine="interleave", pages="1", unprocessed="original")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 3  # orig 1 + translation 1 + unselected orig 2
+    out.close()
+
+
+@pytest.mark.integration
+def test_assemble_translated_only_selected(tiny_pdf, tmp_path):
+    cfg, base = _prep(tiny_pdf, tmp_path, combine="translated_only", bilingual=False, pages="2")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 1
+    out.close()
+
+
+@pytest.mark.integration
+def test_assemble_output_page_size(tiny_pdf, tmp_path):
+    cfg, base = _prep(tiny_pdf, tmp_path, combine="interleave", output_page_size="a4")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert (out[0].rect.width, out[0].rect.height) == (300.0, 400.0)  # original
+    assert round(out[1].rect.width) == 595 and round(out[1].rect.height) == 842  # A4
+    out.close()

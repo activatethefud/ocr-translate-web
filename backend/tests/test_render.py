@@ -11,16 +11,23 @@ def test_page_count_and_size(tiny_pdf):
 
 
 def test_render_pages_max_px(tiny_pdf, tmp_path):
-    imgs = render.render_pages(tiny_pdf, tmp_path / "pages", dpi=150, max_px=200)
-    assert len(imgs) == 2
-    w, h = Image.open(imgs[0]).size
+    made = render.render_pages(tiny_pdf, tmp_path / "pages", dpi=150, max_px=200)
+    assert len(made) == 2
+    assert [p for p, _ in made] == [1, 2]
+    w, h = Image.open(made[0][1]).size
     assert max(w, h) <= 200
 
 
 def test_render_pages_dpi(tiny_pdf, tmp_path):
-    imgs = render.render_pages(tiny_pdf, tmp_path / "pages", dpi=72, max_px=0)
+    made = render.render_pages(tiny_pdf, tmp_path / "pages", dpi=72, max_px=0)
     # 300x400 pt at 72dpi == same numbers
-    assert Image.open(imgs[0]).size == (300, 400)
+    assert Image.open(made[0][1]).size == (300, 400)
+
+
+def test_render_pages_selection(tiny_pdf, tmp_path):
+    made = render.render_pages(tiny_pdf, tmp_path / "pages", pages=[2])
+    assert [p for p, _ in made] == [2]
+    assert made[0][1].name == "p-02.png"
 
 
 def test_render_figure(tiny_pdf, tmp_path):

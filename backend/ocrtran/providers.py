@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -58,8 +59,21 @@ class OpenAICompatibleProvider:
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff = backoff
-        self._session = session or requests.Session()
+        # One requests.Session per thread: the client is used from a thread pool
+        # when pages are translated in parallel.
+        self._session = session
+        self._local = threading.local()
+        self._lock = threading.Lock()
         self.usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
+
+    def _sess(self) -> requests.Session:
+        if self._session is not None:
+            return self._session
+        sess = getattr(self._local, "session", None)
+        if sess is None:
+            sess = requests.Session()
+            self._local.session = sess
+        return sess
 
     def reset_usage(self) -> None:
         self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
@@ -79,13 +93,14 @@ class OpenAICompatibleProvider:
         last = ""
         for attempt in range(self.max_retries):
             try:
-                resp = self._session.post(self.api_base, headers=headers, json=body, timeout=self.timeout)
+                resp = self._sess().post(self.api_base, headers=headers, json=body, timeout=self.timeout)
                 data = resp.json()
                 if "choices" in data:
                     u = data.get("usage") or {}
-                    self.usage["prompt_tokens"] += int(u.get("prompt_tokens") or 0)
-                    self.usage["completion_tokens"] += int(u.get("completion_tokens") or 0)
-                    self.usage["calls"] += 1
+                    with self._lock:
+                        self.usage["prompt_tokens"] += int(u.get("prompt_tokens") or 0)
+                        self.usage["completion_tokens"] += int(u.get("completion_tokens") or 0)
+                        self.usage["calls"] += 1
                     return data["choices"][0]["message"]["content"]
                 last = json.dumps(data)[:300]
             except Exception as exc:  # noqa: BLE001 - retried
@@ -108,7 +123,7 @@ class OpenAICompatibleProvider:
     # -- discovery -----------------------------------------------------
     def list_models(self) -> list[dict]:
         url = self.api_base.rsplit("/chat/completions", 1)[0] + "/models"
-        resp = self._session.get(url, headers={"Authorization": f"Bearer {self.api_key}"}, timeout=60)
+        resp = self._sess().get(url, headers={"Authorization": f"Bearer {self.api_key}"}, timeout=60)
         return resp.json().get("data", [])
 
 
