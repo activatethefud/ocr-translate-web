@@ -26,6 +26,17 @@ def test_prompt_placeholders():
     assert "Serbian" in p and "French" in p and "__SRC__" not in p and "__TGT__" not in p
 
 
+def test_prompt_glossary_and_do_not_translate():
+    p = build_ocr_prompt(
+        "Serbian",
+        "French",
+        glossary=[{"source": "Prava", "target": "droite"}],
+        do_not_translate=["Pythagore"],
+    )
+    assert "Prava => droite" in p
+    assert "Pythagore" in p
+
+
 def test_ocr_image_blocks(tmp_path):
     img = tmp_path / "p.png"
     img.write_bytes(b"not a real image")  # never decoded by the fake provider

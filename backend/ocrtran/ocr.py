@@ -61,8 +61,19 @@ def parse_json(txt: str | None) -> dict | None:
         return None
 
 
-def build_ocr_prompt(source_lang: str, target_lang: str) -> str:
-    return OCR_PROMPT.replace("__SRC__", source_lang).replace("__TGT__", target_lang)
+def build_ocr_prompt(source_lang: str, target_lang: str, glossary=None, do_not_translate=None) -> str:
+    prompt = OCR_PROMPT.replace("__SRC__", source_lang).replace("__TGT__", target_lang)
+    if glossary:
+        lines = [f"- {g.get('source', '')} => {g.get('target', '')}" for g in glossary if g.get("source")]
+        if lines:
+            prompt += (
+                "\nGlossary - use these translations exactly when the term appears:\n"
+                + "\n".join(lines)
+                + "\n"
+            )
+    if do_not_translate:
+        prompt += "\nDo NOT translate these terms; keep them verbatim: " + ", ".join(do_not_translate) + "\n"
+    return prompt
 
 
 def ocr_image(
@@ -72,9 +83,11 @@ def ocr_image(
     target_lang: str,
     max_tokens: int = 16000,
     want_bbox: bool = True,
+    glossary=None,
+    do_not_translate=None,
 ) -> dict:
     """One page -> ``{"blocks": [...], "tight": [bbox, ...]}``."""
-    prompt = build_ocr_prompt(source_lang, target_lang)
+    prompt = build_ocr_prompt(source_lang, target_lang, glossary, do_not_translate)
     obj = parse_json(provider.vision(image_path, prompt, max_tokens))
     if obj is None:  # single retry, as empty responses happen
         obj = parse_json(provider.vision(image_path, prompt, max_tokens))
@@ -123,7 +136,15 @@ def run_ocr(
                 if cached and cached.get("blocks"):
                     result = {"blocks": cached["blocks"], "tight": cached.get("tight", [])}
                 else:
-                    result = ocr_image(provider, img, cfg.source_lang, cfg.target_lang, cfg.max_tokens)
+                    result = ocr_image(
+                        provider,
+                        img,
+                        cfg.source_lang,
+                        cfg.target_lang,
+                        cfg.max_tokens,
+                        glossary=cfg.glossary,
+                        do_not_translate=cfg.do_not_translate,
+                    )
                     cache.save_json(cpath, result)
                 entry = {"page": pi, "img": str(img), **result}
             except Exception as exc:  # noqa: BLE001 - recorded per page

@@ -3,9 +3,13 @@ import {
   api,
   type Block,
   type DocumentOut,
+  type Estimate,
   type JobCreate,
   type JobOut,
+  type ModelInfo,
   type Page,
+  type Report,
+  type Usage,
 } from "./api";
 
 type Combine = "interleave" | "grouped" | "side_by_side";
@@ -14,6 +18,14 @@ const LANGS = [
   "Serbian", "Croatian", "Bosnian", "English", "French", "German", "Spanish",
   "Italian", "Russian", "Simplified Chinese", "Japanese", "Korean", "Arabic",
 ];
+
+function parseGlossary(text: string): { source: string; target: string }[] {
+  return text
+    .split("\n")
+    .map((l) => l.split(/=>|->/))
+    .filter((p) => p.length === 2 && p[0].trim() && p[1].trim())
+    .map((p) => ({ source: p[0].trim(), target: p[1].trim() }));
+}
 
 export function App() {
   const [docs, setDocs] = useState<DocumentOut[]>([]);
@@ -24,9 +36,13 @@ export function App() {
   const [active, setActive] = useState(1);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [estimate, setEstimate] = useState<Estimate | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [models, setModels] = useState<ModelInfo[]>([]);
 
-  // BYOK key is kept in localStorage for convenience; it is sent only with the
-  // job request and never persisted on the server.
+  // BYOK key is kept in localStorage for convenience; only sent with the job
+  // request and never persisted on the server.
   const [apiKey, setApiKey] = useState(localStorage.getItem("ocrtran_key") || "");
   const [sourceLang, setSourceLang] = useState("Serbian");
   const [targetLang, setTargetLang] = useState("French");
@@ -35,14 +51,17 @@ export function App() {
   const [linebreak, setLinebreak] = useState("");
   const [bilingual, setBilingual] = useState(true);
   const [combine, setCombine] = useState<Combine>("interleave");
+  const [glossaryText, setGlossaryText] = useState("");
+  const [doNotTranslate, setDoNotTranslate] = useState("");
+  const [verifyMath, setVerifyMath] = useState(false);
 
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     api.listDocuments().then(setDocs).catch((e) => setError(String(e)));
+    api.usage().then(setUsage).catch(() => undefined);
   }, []);
 
-  // auto-pick a font when the target language changes
   useEffect(() => {
     const low = targetLang.toLowerCase();
     if (low.includes("chinese")) { setFontMain("Noto Sans CJK SC"); setLinebreak("zh"); }
@@ -51,6 +70,11 @@ export function App() {
     else { setFontMain("Noto Serif"); setLinebreak(""); }
   }, [targetLang]);
 
+  useEffect(() => {
+    if (!doc) { setEstimate(null); return; }
+    api.estimate(doc.id, model, verifyMath).then(setEstimate).catch(() => setEstimate(null));
+  }, [doc?.id, model, verifyMath]);
+
   const running = job && (job.status === "queued" || job.status === "running");
   const activePage = useMemo(() => pages.find((p) => p.page === active), [pages, active]);
 
@@ -58,8 +82,10 @@ export function App() {
     if (!job) return;
     const j = await api.getJob(job.id);
     setJob(j);
-    if (j.status === "done" || j.status === "running" || j.status === "failed") {
-      setPages(await api.pages(j.id));
+    if (j.status !== "queued") setPages(await api.pages(j.id));
+    if (j.status === "done") {
+      api.report(j.id).then(setReport).catch(() => undefined);
+      api.usage().then(setUsage).catch(() => undefined);
     }
   }
 
@@ -87,7 +113,7 @@ export function App() {
       const d = await api.upload(file);
       setDoc(d);
       setDocs(await api.listDocuments());
-      setJob(null); setPages([]); setEvents([]);
+      setJob(null); setPages([]); setEvents([]); setReport(null);
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
 
@@ -99,16 +125,19 @@ export function App() {
       source_lang: sourceLang, target_lang: targetLang, model,
       api_key: apiKey || undefined, font_main: fontMain,
       linebreak_locale: linebreak, bilingual, combine,
+      glossary: parseGlossary(glossaryText),
+      do_not_translate: doNotTranslate.split(",").map((s) => s.trim()).filter(Boolean),
+      verify_math: verifyMath,
     };
     if (!bilingual) body.combine = "interleave";
     try {
       const j = await api.createJob(doc.id, body);
-      setJob(j); setEvents([]); setPages([]);
+      setJob(j); setEvents([]); setPages([]); setReport(null);
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
 
-  async function onCancel() {
-    if (job) await api.cancel(job.id);
+  async function loadModels() {
+    try { setModels(await api.models(apiKey)); } catch (e) { setError(String(e)); }
   }
 
   async function saveBlock(page: number, idx: number, target: string) {
@@ -136,11 +165,19 @@ export function App() {
     try { await api.rebuild(job.id, page); } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
 
+  const mathWarn = report
+    ? Object.values(report).flatMap((r) => r.math).filter((m) => !m.ok).length : 0;
+
   return (
     <div className="app">
       <header>
         <h1>OCR + Translate</h1>
         <span className="muted">vision-model OCR → LaTeX → bilingual PDF</span>
+        {usage && (
+          <span className="muted right">
+            {usage.jobs} jobs · {usage.calls} calls · ${usage.cost_usd.toFixed(4)}
+          </span>
+        )}
       </header>
       {error && <div className="error">{error}</div>}
 
@@ -166,7 +203,13 @@ export function App() {
                    onChange={(e) => setApiKey(e.target.value)} />
           </label>
           <label>Model
-            <input value={model} onChange={(e) => setModel(e.target.value)} />
+            <div className="row">
+              <input list="models" value={model} onChange={(e) => setModel(e.target.value)} />
+              <button className="ghost" type="button" onClick={loadModels}>Load</button>
+              <datalist id="models">
+                {models.map((m) => <option key={m.id} value={m.id}>{m.name ?? ""}</option>)}
+              </datalist>
+            </div>
           </label>
           <div className="row">
             <label>From
@@ -201,6 +244,22 @@ export function App() {
               </select>
             </label>
           )}
+          <label className="check">
+            <input type="checkbox" checked={verifyMath} onChange={(e) => setVerifyMath(e.target.checked)} />
+            verify formulas (+1 model call per page)
+          </label>
+          <label>Glossary (one <code>source =&gt; target</code> per line)
+            <textarea value={glossaryText} placeholder={"Prava => droite\nTalesova teorema => théorème de Thalès"}
+                      onChange={(e) => setGlossaryText(e.target.value)} />
+          </label>
+          <label>Do not translate (comma separated)
+            <input value={doNotTranslate} placeholder="Pythagore, Thalès"
+                   onChange={(e) => setDoNotTranslate(e.target.value)} />
+          </label>
+          {estimate && (
+            <p className="muted">≈ ${estimate.est_cost_usd.toFixed(4)} · {estimate.est_calls} model calls
+              ({estimate.pages} pages, {model})</p>
+          )}
           <button disabled={!doc || busy || !!running} onClick={onStart}>Start job</button>
         </section>
 
@@ -212,15 +271,25 @@ export function App() {
               <div className="row spread">
                 <b>{job.status}</b>
                 <span className="muted">{job.mode}</span>
-                {running && <button className="ghost" onClick={onCancel}>Cancel</button>}
+                {running && <button className="ghost" onClick={() => api.cancel(job.id)}>Cancel</button>}
               </div>
               <progress value={job.progress} max={1} />
-              <p className="muted">{job.done_pages}/{job.total_pages} pages</p>
+              <p className="muted">{job.done_pages}/{job.total_pages} pages
+                {job.cost_usd > 0 && <> · ${job.cost_usd.toFixed(4)}</>}</p>
               {job.error && <div className="error">{job.error}</div>}
               {job.artifacts.map((a) => (
                 <a key={a.id} className="download" href={a.download_url}>⬇ {a.filename}</a>
               ))}
               <pre className="log">{events.join("\n")}</pre>
+            </>
+          )}
+          {report && (
+            <>
+              <h2>Verification</h2>
+              {mathWarn > 0
+                ? <div className="error">{mathWarn} page(s) flagged by the formula check</div>
+                : <p className="muted">No structural issues or formula warnings.</p>}
+              <pre className="log">{JSON.stringify(report, null, 1).slice(0, 2000)}</pre>
             </>
           )}
         </section>

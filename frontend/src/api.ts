@@ -67,6 +67,49 @@ export interface JobCreate {
   figure_px?: number;
   max_scale?: number;
   text_width?: string;
+  glossary?: { source: string; target: string }[];
+  do_not_translate?: string[];
+  verify_math?: boolean;
+}
+
+export interface Estimate {
+  model: string;
+  pages: number;
+  est_calls: number;
+  est_prompt_tokens: number;
+  est_completion_tokens: number;
+  est_cost_usd: number;
+}
+
+export interface Usage {
+  jobs: number;
+  done: number;
+  failed: number;
+  cost_usd: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  calls: number;
+}
+
+export interface ModelInfo {
+  id: string;
+  name?: string | null;
+  inputs: string[];
+}
+
+export interface MathCheck {
+  page: number;
+  ok: boolean;
+  issues: { block?: number | null; problem: string }[];
+  checked: number;
+}
+
+export interface Report {
+  [base: string]: {
+    output: string;
+    issues: { kind: string; page?: number; error?: string }[];
+    math: MathCheck[];
+  };
 }
 
 async function j<T>(r: Response): Promise<T> {
@@ -102,4 +145,13 @@ export const api = {
     fetch(`/api/jobs/${id}/pages/${page}/reorder`, json({ order })).then(j),
   rebuild: (id: string, page: number) =>
     fetch(`/api/jobs/${id}/pages/${page}/rebuild`, { method: "POST" }).then(j),
+  estimate: (docId: string, model: string, verifyMath: boolean) =>
+    fetch(`/api/documents/${docId}/estimate?model=${encodeURIComponent(model)}` +
+      `&verify_math=${verifyMath}`).then(j<Estimate>),
+  report: (jobId: string) => fetch(`/api/jobs/${jobId}/report`).then(j<Report>),
+  usage: () => fetch(`/api/usage`).then(j<Usage>),
+  models: (apiKey: string) =>
+    fetch(`/api/models?api_key=${encodeURIComponent(apiKey)}`)
+      .then(j<{ models: ModelInfo[] }>)
+      .then((r) => r.models),
 };

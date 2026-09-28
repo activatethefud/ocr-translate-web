@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 Combine = Literal["interleave", "grouped", "side_by_side"]
 
 
+class GlossaryItem(BaseModel):
+    source: str
+    target: str
+
+
 class JobCreate(BaseModel):
     source_lang: str = "auto"
     target_lang: str = "English"
@@ -25,6 +30,9 @@ class JobCreate(BaseModel):
     max_scale: float = 0.0
     text_width: str = "16.5cm"
     prompt_version: str = "1"
+    glossary: list[GlossaryItem] = []
+    do_not_translate: list[str] = []
+    verify_math: bool = False
 
 
 class DocumentOut(BaseModel):
@@ -105,6 +113,25 @@ class ModelsResponse(BaseModel):
 
 class ErrorOut(BaseModel):
     detail: str
+
+
+class EstimateOut(BaseModel):
+    model: str
+    pages: int
+    est_calls: int
+    est_prompt_tokens: int
+    est_completion_tokens: int
+    est_cost_usd: float
+
+
+class UsageOut(BaseModel):
+    jobs: int
+    done: int
+    failed: int
+    cost_usd: float
+    prompt_tokens: int
+    completion_tokens: int
+    calls: int
 
 
 class OkOut(BaseModel):

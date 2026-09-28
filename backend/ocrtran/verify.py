@@ -11,8 +11,69 @@ from pathlib import Path
 import fitz
 
 from .config import PipelineConfig
+from .events import CancelToken, Emitter, Event, emit
+from .providers import Provider
 
 WORD_RE = re.compile(r"[A-Za-z\u00C0-\u024F\u0400-\u04FF]{4,}")
+
+MATH_CHECK_PROMPT = """You are verifying OCR of one page image.
+Below is the list of math blocks extracted from this page. Compare them against the
+image and report ONLY real discrepancies (a wrong formula, a missing/extra symbol,
+a changed exponent or sign). Ignore translation, wording and formatting.
+Return strict JSON: {{"ok": true|false, "issues": [{{"block": <index>, "problem": "..."}}]}}
+
+Extracted math blocks (index: LaTeX):
+{blocks}
+"""
+
+
+def verify_math_page(
+    provider: Provider, image_path: str | Path, blocks: list[dict], max_tokens: int = 1500
+) -> dict:
+    """Ask a vision model whether the extracted formulas match the page image."""
+    from .ocr import parse_json
+
+    math = [
+        (i, b.get("latex", ""))
+        for i, b in enumerate(blocks)
+        if b.get("type") in ("math", "table") and b.get("latex")
+    ]
+    if not math:
+        return {"ok": True, "issues": [], "checked": 0}
+    listing = "\n".join(f"{i}: {lx}" for i, lx in math)
+    raw = provider.vision(image_path, MATH_CHECK_PROMPT.replace("{blocks}", listing), max_tokens)
+    obj = parse_json(raw)
+    if obj is None:
+        return {
+            "ok": True,
+            "issues": [{"block": None, "problem": "checker returned no JSON"}],
+            "checked": len(math),
+        }
+    return {"ok": bool(obj.get("ok", True)), "issues": obj.get("issues", []) or [], "checked": len(math)}
+
+
+def run_math_check(
+    cfg: PipelineConfig,
+    provider: Provider,
+    results: dict[str, list[dict]],
+    on_event: Emitter | None = None,
+    cancel: CancelToken | None = None,
+) -> dict[str, list[dict]]:
+    """Opt-in formula re-check (extra vision calls). Stores ``math_check`` per page."""
+    cancel = cancel or CancelToken()
+    total = sum(len(v) for v in results.values())
+    emit(on_event, Event("verify", "started", total=total))
+    for base, entries in results.items():
+        for entry in entries:
+            cancel.check()
+            try:
+                entry["math_check"] = verify_math_page(provider, entry["img"], entry.get("blocks", []))
+            except Exception as exc:  # noqa: BLE001
+                entry["math_check"] = {"ok": True, "issues": [{"problem": str(exc)}]}
+            ok = entry["math_check"]["ok"]
+            emit(on_event, Event("verify", "ok" if ok else "warn", base=base, page=entry["page"]))
+    return results
+
 
 EXPECTED_PAGE_MULTIPLIER = {
     "interleave": 2,
@@ -92,5 +153,6 @@ def run_verify(cfg: PipelineConfig, results: dict[str, list[dict]], outputs: dic
         if source:
             issues += verify_output(cfg, source, outpath)
         issues += [i for i in verify_ocr({base: results.get(base, [])})]
-        report[base] = {"output": str(outpath), "issues": issues}
+        math = [{"page": e["page"], **e["math_check"]} for e in results.get(base, []) if e.get("math_check")]
+        report[base] = {"output": str(outpath), "issues": issues, "math": math}
     return report

@@ -264,16 +264,23 @@ model-generated and user-editable, so treat it as **untrusted**.
 - ✅ Docker (multi-stage) + `docker-compose.yml`.  
   See [`TESTING.md`](TESTING.md); 58 tests.
 
-**M2 — Review editor (1 week)**
-- Side-by-side original vs blocks; edit target/LaTeX; per-page rebuild; figure
-  re-crop; empty/failed page retry.
+**M2 — Review editor + robustness (done)**
+- ✅ Side-by-side original vs blocks; edit target; **reorder** blocks; per-page
+  **rebuild** (LaTeX re-typeset).
+- ✅ **Formula verification** (opt-in `verify_math`): a vision model compares the
+  extracted formulas against the page image and flags discrepancies.
+- ✅ **Model picker** from `/api/models` (filters by image capability).
+- ✅ **Cost**: real token usage captured per job + `usage` table, `/api/usage`,
+  pre-run **estimate** (`/api/documents/{id}/estimate`).
+- ✅ **Glossary** and **do-not-translate** terms injected into the OCR prompt.
+- ✅ Opt-in **live** API test (`-m live`).
 
-**M3 — Robustness & cost (1 week)**
-- Verification pass, model picker with capability check, cost estimate/usage,
-  glossaries, batch.
+**M3 — Remaining (as needed)**
+- Batch/multi-document jobs; full block editor (add/remove blocks, LaTeX edit);
+  figure re-crop UI; layout-preserving mode; quotas.
 
 **M4 — Multi-user (as needed)**
-- Auth, quotas, Postgres/S3/Redis, layout mode, public API.
+- Auth, quotas, Postgres/S3/Redis, public API.
 
 ---
 

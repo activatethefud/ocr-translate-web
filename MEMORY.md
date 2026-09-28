@@ -5,6 +5,37 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
 
 ---
 
+## Session: M2 complete — verification, cost, glossary, model picker
+
+### Engine (`ocrtran/`)
+- `pricing.py`: token→USD (`cost_usd`) + pre-run `estimate_for_pages`.
+- `providers.py`: captures `usage` (prompt/completion tokens, calls) per call.
+- `config.py`: new fields `glossary` (list of {source,target}),
+  `do_not_translate`, `verify_math`.
+- `ocr.py`: glossary / do-not-translate injected into the OCR prompt.
+- `verify.py`: `verify_math_page` + `run_math_check` (opt-in; vision model compares
+  extracted formulas against the page image). Report now includes `math`.
+- `pipeline.py`: `PipelineResult.usage`; runs the math check when enabled.
+
+### API (`app/`)
+- `GET /api/documents/{id}/estimate`, `GET /api/jobs/{id}/report`,
+  `GET /api/usage` (real numbers), `Usage` table, `cost_usd` persisted on jobs.
+- Job config carries glossary/do-not-translate/verify_math.
+
+### Frontend
+- Model input with **Load** (from `/api/models`) + datalist; glossary textarea
+  (`source => target` per line); do-not-translate field; **verify formulas**
+  checkbox; **cost estimate** line; **verification report** panel; usage in header.
+
+### Tests
+- 69 passing + 1 live (skipped unless `OCRtran_LIVE=1` + key). New: `test_pricing`,
+  glossary prompt, `verify_math`, estimate/report/usage API.
+- Bugs fixed as regressions: `Event(status=…)` duplicate kwarg (again) in
+  `verify.run_math_check`; `pricing.price_for` prefix ordering (`gpt-4o` matched
+  before `gpt-4o-mini`) → match longest prefix.
+
+---
+
 ## Session: M1 complete — local web MVP
 
 ### Done

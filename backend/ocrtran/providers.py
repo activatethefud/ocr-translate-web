@@ -59,6 +59,13 @@ class OpenAICompatibleProvider:
         self.max_retries = max_retries
         self.backoff = backoff
         self._session = session or requests.Session()
+        self.usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
+
+    def reset_usage(self) -> None:
+        self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
+
+    def usage_snapshot(self) -> dict[str, int]:
+        return dict(self.usage)
 
     # -- low level -----------------------------------------------------
     def _post(self, content: Any, max_tokens: int) -> str:
@@ -75,6 +82,10 @@ class OpenAICompatibleProvider:
                 resp = self._session.post(self.api_base, headers=headers, json=body, timeout=self.timeout)
                 data = resp.json()
                 if "choices" in data:
+                    u = data.get("usage") or {}
+                    self.usage["prompt_tokens"] += int(u.get("prompt_tokens") or 0)
+                    self.usage["completion_tokens"] += int(u.get("completion_tokens") or 0)
+                    self.usage["calls"] += 1
                     return data["choices"][0]["message"]["content"]
                 last = json.dumps(data)[:300]
             except Exception as exc:  # noqa: BLE001 - retried

@@ -37,6 +37,9 @@ class PipelineConfig:
     # --- translation / typesetting ---
     source_lang: str = "auto"
     target_lang: str = "English"
+    glossary: list[dict[str, str]] = field(default_factory=list)
+    do_not_translate: list[str] = field(default_factory=list)
+    verify_math: bool = False
     font_main: str = "Noto Serif"
     linebreak_locale: str = ""
     extra_preamble: str = ""

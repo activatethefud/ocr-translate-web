@@ -69,11 +69,9 @@ skip themselves when `xelatex` is missing.
 
 ### 3. Live (opt-in, network + cost)
 - Marked `live`, skipped unless `OCRtran_LIVE=1` and a key is set.
-- One 1-page generated fixture (simple prose + one formula + one figure box).
-- Asserts: blocks non-empty, at least one `math` block, output PDF built, no
-  empty page. Optionally snapshot-compare block *types* (not exact text).
-- Optional "provider capability" test: `/models` lists a model whose
-  `input_modalities` include `image`.
+  Run: `OCRtran_LIVE=1 DS_KEY=… PYTHONPATH=.deps:. pytest -m live -v`.
+- One 1-page generated fixture (prose + formulas): asserts a PDF is produced and
+  at least one model call was made (`result.usage["calls"] >= 1`).
 
 ## Failure injection (must not crash the job)
 
@@ -135,7 +133,13 @@ Each must have a named test:
 7. **CJK missing super/subscripts** — falls back to `^(...)`/`_(...)`.
 8. **PDF private-use glyphs** — `\uf8xx` brackets mapped/stripped.
 9. **One page per source page** — `standalone`; assert output pages == expected.
-10. **`Event` status duplication** — regression for the constructor arg bug.
+10. **`Event` status duplication** — regression for the constructor arg bug
+    (recurred in `verify.run_math_check`).
+11. **Pricing prefix ordering** — `gpt-4o` must not shadow `gpt-4o-mini`; match the
+    longest prefix.
+12. **Glossary / do-not-translate** must appear verbatim in the OCR prompt.
+13. **Cost tracking** — usage is summed and cost computed per model; unknown model
+    costs 0 (never crashes).
 
 ## Coverage & CI
 

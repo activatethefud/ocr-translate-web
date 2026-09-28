@@ -18,6 +18,7 @@ class PipelineResult:
     ocr: dict[str, list[dict]] = field(default_factory=dict)
     outputs: dict[str, Path] = field(default_factory=dict)
     report: dict = field(default_factory=dict)
+    usage: dict = field(default_factory=dict)
     canceled: bool = False
 
     @property
@@ -74,8 +75,12 @@ class Pipeline:
             result.ocr = self.run_ocr()
             self.run_annotate(result.ocr)
             self.run_build(result.ocr)
+            if self.cfg.verify_math:
+                verify.run_math_check(self.cfg, self.provider, result.ocr, self.on_event, self.cancel)
             result.outputs = self.run_assemble()
             result.report = verify.run_verify(self.cfg, result.ocr, result.outputs)
+            snap = getattr(self.provider, "usage_snapshot", None)
+            result.usage = snap() if callable(snap) else {"calls": 0}
             emit(
                 self.on_event,
                 Event("done", "done", data={"outputs": {k: str(v) for k, v in result.outputs.items()}}),

@@ -6,7 +6,9 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from ocrtran import Pipeline, PipelineConfig
+from ocrtran.cache import save_json
 from ocrtran.events import CancelToken, Event
+from ocrtran.pricing import cost_usd
 
 from . import db, storage
 from .settings import Settings
@@ -138,6 +140,8 @@ class JobRunner:
             if not result.outputs:
                 self._update(job_id, status="failed", error="no output produced", finished_at=db.utcnow())
                 return
+            usage = result.usage or {}
+            cost = cost_usd(cfg.model, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
             s = db.get_session()
             try:
                 for _base, path in result.outputs.items():
@@ -147,10 +151,28 @@ class JobRunner:
                             job_id=job_id, kind=cfg.output_mode, path=str(dest), bytes=dest.stat().st_size
                         )
                     )
+                s.add(
+                    db.Usage(
+                        job_id=job_id,
+                        model=cfg.model,
+                        prompt_tokens=usage.get("prompt_tokens", 0),
+                        completion_tokens=usage.get("completion_tokens", 0),
+                        calls=usage.get("calls", 0),
+                        cost_usd=cost,
+                    )
+                )
                 s.commit()
             finally:
                 s.close()
-            self._update(job_id, status="done", progress=1.0, done_pages=total, finished_at=db.utcnow())
+            try:
+                rdir = storage.artifact_dir(self.settings, job_id)
+                rdir.mkdir(parents=True, exist_ok=True)
+                save_json(rdir / "report.json", result.report)
+            except OSError:
+                pass
+            self._update(
+                job_id, status="done", progress=1.0, done_pages=total, cost_usd=cost, finished_at=db.utcnow()
+            )
         except Exception as exc:  # noqa: BLE001 - reported to the job
             log.exception("job %s failed", job_id)
             self._record(job_id, Event("error", "error", message=str(exc)))

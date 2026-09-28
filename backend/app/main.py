@@ -19,6 +19,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from ocrtran import latex, paths
 from ocrtran.cache import load_json, save_json
+from ocrtran.pricing import estimate_for_pages
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
 from . import db, storage
@@ -28,12 +29,14 @@ from .schemas import (
     BlockPatch,
     BlockReorder,
     DocumentOut,
+    EstimateOut,
     JobCreate,
     JobOut,
     ModelInfo,
     ModelsResponse,
     OkOut,
     PageOut,
+    UsageOut,
 )
 from .settings import Settings, get_settings
 
@@ -203,6 +206,26 @@ def get_document(doc_id: str):
         return _doc_out(doc)
     finally:
         s.close()
+
+
+@app.get("/api/documents/{doc_id}/estimate", response_model=EstimateOut)
+def estimate_document(
+    doc_id: str,
+    model: str | None = None,
+    verify_math: bool = False,
+    settings: Settings = Depends(_settings_dep),
+):
+    s = db.get_session()
+    try:
+        doc = s.get(db.Document, doc_id)
+        if not doc:
+            raise HTTPException(404, "document not found")
+        n_pages = doc.n_pages
+    finally:
+        s.close()
+    return EstimateOut(
+        **estimate_for_pages(model or settings.default_model, n_pages, verify_math=verify_math)
+    )
 
 
 # --------------------------------------------------------------------------
@@ -444,6 +467,18 @@ def rebuild_page(job_id: str, page: int, settings: Settings = Depends(_settings_
 # --------------------------------------------------------------------------
 # artifacts + models + usage
 # --------------------------------------------------------------------------
+@app.get("/api/jobs/{job_id}/report")
+def job_report(job_id: str, settings: Settings = Depends(_settings_dep)) -> dict:
+    s = db.get_session()
+    try:
+        if not s.get(db.Job, job_id):
+            raise HTTPException(404, "job not found")
+    finally:
+        s.close()
+    path = storage.artifact_dir(settings, job_id) / "report.json"
+    return load_json(path) or {}
+
+
 @app.get("/api/artifacts/{artifact_id}/download")
 def download_artifact(artifact_id: str):
     s = db.get_session()
@@ -476,17 +511,21 @@ def list_models(
     return ModelsResponse(models=out)
 
 
-@app.get("/api/usage")
+@app.get("/api/usage", response_model=UsageOut)
 def usage():
     s = db.get_session()
     try:
         jobs = s.execute(select(db.Job)).scalars().all()
-        return {
-            "jobs": len(jobs),
-            "done": sum(1 for j in jobs if j.status == "done"),
-            "failed": sum(1 for j in jobs if j.status == "failed"),
-            "cost_usd": round(sum(j.cost_usd for j in jobs), 4),
-        }
+        rows = s.execute(select(db.Usage)).scalars().all()
+        return UsageOut(
+            jobs=len(jobs),
+            done=sum(1 for j in jobs if j.status == "done"),
+            failed=sum(1 for j in jobs if j.status == "failed"),
+            cost_usd=round(sum(u.cost_usd for u in rows), 4),
+            prompt_tokens=sum(u.prompt_tokens for u in rows),
+            completion_tokens=sum(u.completion_tokens for u in rows),
+            calls=sum(u.calls for u in rows),
+        )
     finally:
         s.close()
 

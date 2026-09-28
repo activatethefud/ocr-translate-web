@@ -20,6 +20,34 @@ def test_verify_ocr_flags_empty():
     assert len(issues) == 1 and issues[0]["kind"] == "empty_ocr"
 
 
+def test_verify_math_page_no_math(tmp_path):
+    from tests.conftest import FakeProvider
+
+    res = verify.verify_math_page(FakeProvider(), tmp_path / "x.png", [{"type": "prose"}])
+    assert res["ok"] is True and res["checked"] == 0
+
+
+def test_verify_math_page_checks_formulas(tmp_path):
+    from tests.conftest import FakeProvider
+
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    blocks = [{"type": "math", "latex": "a=b"}, {"type": "prose", "target": "hi"}]
+    res = verify.verify_math_page(FakeProvider(), img, blocks)
+    assert res["checked"] == 1
+
+
+def test_run_math_check_stores_result(tmp_path):
+    from tests.conftest import FakeProvider
+
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    cfg = PipelineConfig(sources=[str(img)])
+    results = {"d": [{"page": 1, "img": str(img), "blocks": [{"type": "math", "latex": "a=b"}]}]}
+    verify.run_math_check(cfg, FakeProvider(), results)
+    assert results["d"][0]["math_check"]["checked"] == 1
+
+
 @pytest.mark.integration
 def test_verify_output_page_count(tiny_pdf, tmp_path):
     workdir = tmp_path / "work"

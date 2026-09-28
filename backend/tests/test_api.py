@@ -49,6 +49,20 @@ def test_models_without_key(client):
     assert r.json()["models"][0]["id"]
 
 
+def test_estimate(client, tiny_pdf):
+    doc = _upload(client, tiny_pdf).json()
+    r = client.get(f"/api/documents/{doc['id']}/estimate?model=deepseek-flash")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["pages"] == 2 and body["est_cost_usd"] > 0
+
+
+def test_usage_ok(client):
+    r = client.get("/api/usage")
+    assert r.status_code == 200
+    assert "cost_usd" in r.json() and "calls" in r.json()
+
+
 def _wait(client, job_id, timeout=90):
     deadline = time.time() + timeout
     job = {}
@@ -73,6 +87,8 @@ def test_full_job_flow(client, tiny_pdf, xelatex_available):
             "font_main": "Noto Serif",
             "combine": "interleave",
             "bilingual": True,
+            "verify_math": True,
+            "glossary": [{"source": "Prava", "target": "droite"}],
         },
     )
     assert r.status_code == 200, r.text
@@ -82,6 +98,11 @@ def test_full_job_flow(client, tiny_pdf, xelatex_available):
     assert job["status"] == "done", job
     assert job["progress"] == 1.0
     assert job["artifacts"], job
+
+    report = client.get(f"/api/jobs/{job_id}/report")
+    assert report.status_code == 200
+    assert "source" in report.json()
+    assert report.json()["source"]["math"]  # verify_math produced per-page checks
 
     dl = client.get(job["artifacts"][0]["download_url"])
     assert dl.status_code == 200 and dl.content[:4] == b"%PDF"
