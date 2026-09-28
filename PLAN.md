@@ -255,9 +255,14 @@ model-generated and user-editable, so treat it as **untrusted**.
     falls back for testing.
 
 **M1 — Local web MVP (3–5 days)**
-- FastAPI + SQLite + FS, one job at a time, SSE progress, download bilingual /
-  translated-only. Minimal frontend (upload + progress + download).
-- Reuses **everything** we already built.
+- ✅ FastAPI + SQLite + FS; background `JobRunner` (concurrency 3), SSE progress,
+  cancel; download bilingual / translated-only. Reuses the whole engine.
+- ✅ REST: upload (sanitized), documents, jobs, `/events` (SSE), pages,
+  block edit + reorder, per-page rebuild, artifacts, models, usage.
+- ✅ React SPA: upload · configure (BYOK key, languages, model, font,
+  bilingual/combine) · live progress · page preview + simple block editor · download.
+- ✅ Docker (multi-stage) + `docker-compose.yml`.  
+  See [`TESTING.md`](TESTING.md); 58 tests.
 
 **M2 — Review editor (1 week)**
 - Side-by-side original vs blocks; edit target/LaTeX; per-page rebuild; figure

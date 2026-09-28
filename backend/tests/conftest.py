@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import tempfile
 from pathlib import Path
 
 import fitz
 import pytest
+
+# Configure the app's storage/db for the whole test session BEFORE app import.
+_TEST_STORE = tempfile.mkdtemp(prefix="ocrtran_test_")
+os.environ["STORAGE_DIR"] = _TEST_STORE
+os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_STORE}/test.db"
+os.environ["WORKER_CONCURRENCY"] = "2"
+os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 
 
 @pytest.fixture

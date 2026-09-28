@@ -46,3 +46,9 @@ ocr_work/
 .DS_Store
 .idea/
 .vscode/
+
+# local dependency overrides (see AGENTS.md)
+backend/.deps/
+
+# frontend build artifacts
+*.tsbuildinfo

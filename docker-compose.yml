@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    image: ocr-translate-web:latest
+    ports:
+      - "8000:8000"
+    environment:
+      STORAGE_DIR: /data
+      CORS_ORIGINS: http://localhost:8000
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-deepseek-flash}
+      API_BASE: ${API_BASE:-https://api.deepseek.com/chat/completions}
+      DS_KEY: ${DS_KEY:-}                 # optional server key (testing fallback)
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+      MAX_PAGES: ${MAX_PAGES:-1000}
+      MAX_JOB_USD: ${MAX_JOB_USD:-2.0}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

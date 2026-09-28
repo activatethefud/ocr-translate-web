@@ -5,6 +5,41 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
 
 ---
 
+## Session: M1 complete — local web MVP
+
+### Done
+- **FastAPI service** `backend/app/`: upload (multipart, size cap, pikepdf
+  sanitization), documents, jobs, **SSE progress**, pages, block edit + **reorder**,
+  per-page **rebuild**, artifact download, models, usage, health.
+- **SQLAlchemy models** (SQLite + WAL): documents, jobs, artifacts, events.
+- **Background `JobRunner`** (ThreadPool, `WORKER_CONCURRENCY`, cancel tokens);
+  persists every pipeline event; progress = 60% ocr + 35% build + assemble.
+- **BYOK end to end**: key travels in the job request and is **never persisted**;
+  env key remains a testing fallback.
+- **React SPA** `frontend/` (Vite + TS, plain CSS): upload, config (languages,
+  model, font, bilingual/combine), live progress via `EventSource`, page preview +
+  block editor (edit target, reorder, rebuild page), download links.
+- **Docker**: multi-stage `Dockerfile` (node build → python:3.12-slim + texlive +
+  noto fonts) and `docker-compose.yml` (api + `/data` volume).
+- **58 tests** (11 integration, incl. API through `TestClient` with a fake
+  provider), ruff clean. Frontend builds (`npm run build`).
+
+### Local env gotcha (important)
+- Global env has **FastAPI 0.115 + Starlette 1.3.1 (incompatible)**. Installed a
+  matching pair into `backend/.deps` (`fastapi==0.115.0`, `starlette==0.41.3`,
+  `pip install --target .deps --no-deps`). Run tests/server with
+  **`PYTHONPATH=.deps:.`**. `.deps/` is git-ignored. Docker uses the pinned
+  versions from `pyproject.toml`, so the workaround is local-only.
+- Frontend deliberately avoids Tailwind (plain CSS) to keep the dep tree tiny.
+
+### Next: M2 — robustness & cost
+- Verification pass (re-check formulas vs image, flag low-confidence pages).
+- Model/provider picker in the UI (uses `/api/models`).
+- Cost estimate before run + usage meter; glossaries / do-not-translate lists.
+- Live API test (opt-in).
+
+---
+
 ## Session: M0 complete — engine packaged
 
 ### Done

@@ -8,8 +8,9 @@ page, sends it to a vision model that returns structured content (prose +
 real LaTeX + figure boxes), re-typesets it with XeLaTeX, and gives you a
 bilingual or translated-only PDF with the original figures intact.
 
-> Status: **planning / scaffolding.** The engine exists as the
-> `ocr-translate` skill; the web app is being built on top of it.
+> Status: **M1 done** — working local web app (FastAPI + SQLite + SSE, React SPA,
+> Docker). See `PLAN.md` for the roadmap (M2: review editor polish, verification,
+> cost controls).
 
 ## Why not plain OCR?
 
@@ -38,22 +39,26 @@ The pipeline is implemented as a reusable skill:
 It will be refactored into this repo's `backend/ocrtran/` package (same behavior,
 importable, with progress + cancellation) so the web app and CLI share one engine.
 
-## Quickstart (planned)
+## Quickstart
 
 ```bash
-cp .env.example .env          # add DS_KEY and preferred settings
-docker compose up --build     # api + worker (+ frontend)
-# open http://localhost:8000
+cp .env.example .env          # optional: set DS_KEY to use the server-key fallback
+docker compose up --build     # http://localhost:8000
 ```
 
-Local dev (without Docker):
+Or run locally (no Docker):
 
 ```bash
-# backend
-cd backend && pip install -e ".[dev]" && uvicorn app.main:app --reload
-# frontend
+# backend API (note: PYTHONPATH=.deps:. works around a local FastAPI/Starlette
+# version clash; see AGENTS.md)
+cd backend && PYTHONPATH=.deps:. uvicorn app.main:app --reload
+
+# frontend dev server (proxies /api -> :8000)
 cd frontend && npm install && npm run dev
 ```
+
+Bring your own key in the UI (it is never stored server-side), or set `DS_KEY`
+in the environment for testing.
 
 ## Output options
 

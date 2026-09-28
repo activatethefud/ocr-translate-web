@@ -44,7 +44,8 @@ ocr-translate-web/
 ├── PLAN.md                  # design + decisions
 ├── TESTING.md               # test strategy
 ├── README.md                # user-facing intro + quickstart
-├── docker-compose.yml       # api + worker (+ build frontend)   [M1]
+├── docker-compose.yml       # api service (SQLite + FS volume)
+├── Dockerfile               # multi-stage: build SPA -> python + TeX + fonts
 ├── .env.example             # config template (no secrets)
 ├── backend/
 │   ├── ocrtran/             # ENGINE (done, M0) — importable package
@@ -61,11 +62,18 @@ ocr-translate-web/
 │   │   ├── paths.py         # artifact layout
 │   │   ├── pipeline.py      # orchestrator
 │   │   └── cli.py           # thin CLI over the engine
-│   ├── app/                 # FastAPI: routes, models, db, jobs, storage  [M1]
-│   ├── tests/               # 48 tests (unit + integration)
+│   ├── app/                 # FastAPI service (done, M1)
+│   │   ├── main.py          # routes: upload, jobs, SSE, pages, artifacts
+│   │   ├── db.py            # SQLAlchemy models (SQLite)
+│   │   ├── runner.py        # background job runner (ThreadPool)
+│   │   ├── storage.py       # upload sanitization (pikepdf) + layout
+│   │   ├── schemas.py       # pydantic request/response
+│   │   └── settings.py      # env config
+│   ├── tests/               # 58 tests (unit + integration + API)
 │   └── pyproject.toml
-└── frontend/                # React + Vite + TS + Tailwind            [M1]
-    ├── src/
+└── frontend/                # React + Vite + TS (done, M1)
+    ├── src/App.tsx          # upload · configure · progress(SSE) · review
+    ├── src/api.ts
     └── package.json
 ```
 
@@ -76,22 +84,28 @@ ocr-translate-web/
 > with `PYTHONPATH=.`.
 
 ```bash
-# engine tests (no network)
+# engine + API tests (no network)
 cd backend
-PYTHONPATH=. pytest                       # 48 tests (9 integration)
-PYTHONPATH=. pytest -m integration        # needs xelatex + pymupdf
+PYTHONPATH=.deps:. pytest                  # 58 tests (11 integration)
+PYTHONPATH=.deps:. pytest -m integration   # needs xelatex + pymupdf
 ruff check . && ruff format --check .
 
-# engine CLI
-PYTHONPATH=. python -m ocrtran.cli run --config config.json
+# API server (local)
+PYTHONPATH=.deps:. uvicorn app.main:app --reload
 
-# backend / frontend (M1+)
-uvicorn app.main:app --reload             # api
-cd frontend && npm install && npm run dev
+# frontend
+cd frontend && npm install && npm run dev   # proxies /api -> :8000
+npm run build                               # FastAPI serves ./frontend/dist at /
 
-# docker
-docker compose up --build
+# docker (recommended)
+docker compose up --build                   # http://localhost:8000
 ```
+
+> **Why `PYTHONPATH=.deps:.`?** This machine's global env has FastAPI 0.115 with
+> an incompatible Starlette 1.3.1. `backend/.deps` holds a matching pair
+> (`fastapi==0.115.0`, `starlette==0.41.3`) installed with `pip install --target
+> .deps --no-deps`. Docker installs the pinned versions from `pyproject.toml`
+> instead, so this workaround is local-only. `backend/.deps/` is git-ignored.
 
 ## Conventions
 
