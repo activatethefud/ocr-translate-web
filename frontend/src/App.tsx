@@ -14,10 +14,26 @@ import {
 
 type Combine = "interleave" | "grouped" | "side_by_side";
 
-const LANGS = [
-  "Serbian", "Croatian", "Bosnian", "English", "French", "German", "Spanish",
-  "Italian", "Russian", "Simplified Chinese", "Japanese", "Korean", "Arabic",
+const LANGUAGE_NAMES = [
+  "Afrikaans", "Albanian", "Amharic", "Arabic", "Armenian", "Azerbaijani",
+  "Basque", "Belarusian", "Bengali", "Bosnian", "Bulgarian", "Burmese",
+  "Catalan", "Cebuano", "Chinese (Simplified)", "Chinese (Traditional)",
+  "Croatian", "Czech", "Danish", "Dutch", "English", "Esperanto", "Estonian",
+  "Filipino", "Finnish", "French", "Galician", "Georgian", "German", "Greek",
+  "Gujarati", "Haitian Creole", "Hausa", "Hebrew", "Hindi", "Hmong", "Hungarian",
+  "Icelandic", "Igbo", "Indonesian", "Irish", "Italian", "Japanese", "Javanese",
+  "Kannada", "Kazakh", "Khmer", "Kinyarwanda", "Korean", "Kurdish", "Kyrgyz",
+  "Lao", "Latin", "Latvian", "Lithuanian", "Luxembourgish", "Macedonian",
+  "Malagasy", "Malay", "Malayalam", "Maltese", "Marathi", "Mongolian", "Nepali",
+  "Norwegian", "Odia", "Pashto", "Persian", "Polish", "Portuguese", "Punjabi",
+  "Romanian", "Russian", "Serbian", "Shona", "Sindhi", "Sinhala", "Slovak",
+  "Slovenian", "Somali", "Spanish", "Sundanese", "Swahili", "Swedish", "Tajik",
+  "Tamil", "Tatar", "Telugu", "Thai", "Turkish", "Turkmen", "Ukrainian", "Urdu",
+  "Uyghur", "Uzbek", "Vietnamese", "Welsh", "Xhosa", "Yiddish", "Yoruba", "Zulu",
 ];
+// sorted A→Z, with an "Other…" free-text option handled by <LangSelect>
+const LANGUAGES = [...LANGUAGE_NAMES].sort((a, b) => a.localeCompare(b));
+const OTHER = "__other__";
 
 function parseGlossary(text: string): { source: string; target: string }[] {
   return text
@@ -47,6 +63,37 @@ function stageLabel(e: { stage: string; status: string; page?: number | null }):
     default:
       return `${e.stage}${p}…`;
   }
+}
+
+function LangSelect(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  allowAuto?: boolean;
+}) {
+  const { label, value, onChange, allowAuto } = props;
+  const known = LANGUAGES.includes(value);
+  const selectValue = value === "auto" ? "auto" : known ? value : OTHER;
+  const isOther = selectValue === OTHER;
+  return (
+    <label>{label}
+      <select
+        value={selectValue}
+        onChange={(e) => onChange(e.target.value === OTHER ? "" : e.target.value)}
+      >
+        {allowAuto && <option value="auto">Auto-detect</option>}
+        {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+        <option value={OTHER}>Other…</option>
+      </select>
+      {isOther && (
+        <input
+          value={value}
+          placeholder="Type a language, e.g. Tagalog"
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </label>
+  );
 }
 
 export function App() {
@@ -170,9 +217,10 @@ export function App() {
 
   async function onStart() {
     if (!doc) return;
+    if (!targetLang.trim()) { setError("Please choose or type a target language"); return; }
     setError(""); setBusy(true);
     const body: JobCreate = {
-      source_lang: sourceLang, target_lang: targetLang, model,
+      source_lang: sourceLang.trim() || "auto", target_lang: targetLang.trim(), model,
       api_key: apiKey || undefined, font_main: fontMain,
       linebreak_locale: linebreak, bilingual, combine,
       glossary: parseGlossary(glossaryText),
@@ -293,17 +341,8 @@ export function App() {
             </div>
           </label>
           <div className="row">
-            <label>From
-              <select value={sourceLang} onChange={(e) => setSourceLang(e.target.value)}>
-                <option>auto</option>
-                {LANGS.map((l) => <option key={l}>{l}</option>)}
-              </select>
-            </label>
-            <label>To
-              <select value={targetLang} onChange={(e) => setTargetLang(e.target.value)}>
-                {LANGS.map((l) => <option key={l}>{l}</option>)}
-              </select>
-            </label>
+            <LangSelect label="From" value={sourceLang} onChange={setSourceLang} allowAuto />
+            <LangSelect label="To" value={targetLang} onChange={setTargetLang} />
           </div>
           <div className="row">
             <label>Font<input value={fontMain} onChange={(e) => setFontMain(e.target.value)} /></label>

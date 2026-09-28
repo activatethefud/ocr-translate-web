@@ -3,6 +3,12 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: language picker expansion
+
+- Frontend `LANGUAGES`: ~100 languages, sorted A→Z, plus an **Other…** option that
+  reveals a free-text input (typed value is sent as source/target language).
+  Source also keeps **Auto-detect**. Empty target language is rejected client-side.
+
 ---
 
 ## Session: figure-crop padding fix + test expansion
