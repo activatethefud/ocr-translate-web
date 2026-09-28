@@ -90,3 +90,36 @@ def test_assemble_output_page_size(tiny_pdf, tmp_path):
     assert (out[0].rect.width, out[0].rect.height) == (300.0, 400.0)  # original
     assert round(out[1].rect.width) == 595 and round(out[1].rect.height) == 842  # A4
     out.close()
+
+
+def test_eff_max_scale():
+    from ocrtran.assemble import _eff_max_scale
+
+    assert _eff_max_scale(PipelineConfig(sources=["a.pdf"], scale_mode="fit")) == 1.0
+    assert _eff_max_scale(PipelineConfig(sources=["a.pdf"], scale_mode="fill", max_scale=0)) == 0
+
+
+@pytest.mark.integration
+def test_assemble_grouped_skip(tiny_pdf, tmp_path):
+    cfg, base = _prep(tiny_pdf, tmp_path, combine="grouped", pages="1", unprocessed="skip")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 2  # orig 1 + translation 1
+    out.close()
+
+
+@pytest.mark.integration
+def test_assemble_side_by_side_keeps_unselected(tiny_pdf, tmp_path):
+    cfg, base = _prep(tiny_pdf, tmp_path, combine="side_by_side", pages="1", unprocessed="original")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 2  # page 1 side-by-side + page 2 original
+    out.close()
+
+
+@pytest.mark.integration
+def test_assemble_output_size_letter(tiny_pdf, tmp_path):
+    cfg, base = _prep(
+        tiny_pdf, tmp_path, combine="translated_only", bilingual=False, output_page_size="letter"
+    )
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert (round(out[0].rect.width), round(out[0].rect.height)) == (612, 792)
+    out.close()

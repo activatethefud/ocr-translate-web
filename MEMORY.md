@@ -5,6 +5,24 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
 
 ---
 
+## Session: figure-crop padding fix + test expansion
+
+- **Symptom**: OCR figure crops were sometimes a tad too tight and clipped the edge
+  of a diagram.
+- **Fix**: new `ocrtran/geometry.py` (`union_bbox`, `expand_bbox`). `build_tex` now
+  uses the **union of the model's tight box and its main-call box** (the main one is
+  usually looser) and then pads by `figure_pad` (default `0.06`) with a minimum of
+  `min_pad_pt=6`; `render_figure` clamps to the page and rejects degenerate boxes.
+  New validated config `figure_pad`.
+- **Tests: +54** (135 test functions; **137 passed + 1 live**). New files
+  `test_geometry.py`, `test_figures.py` (marker-based: does a crop that should
+  include the area *around* a box actually contain a nearby red patch?),
+  `test_providers.py` (usage, retries, thread-local sessions),
+  `test_concurrency.py`, `test_events.py`; extended pages/config/verify/assemble/
+  ocr/annotate.
+
+---
+
 ## Session: front-end progress fix (from the /tmp/doktorske.pdf report)
 
 - **Symptom**: a 1-page job looked like it wasn't progressing in the UI.

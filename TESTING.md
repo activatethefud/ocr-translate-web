@@ -149,6 +149,9 @@ Each must have a named test:
     cap `done_pages` at the total.
 17. **UTC timestamps** — datetimes must be serialized with a UTC offset, otherwise
     the browser parses naive values as local time (elapsed timer was off by hours).
+18. **Figure crops too tight** — use `union(tight, main)` + `figure_pad` (and a
+    minimum pad), clamp to the page, and reject degenerate boxes so diagrams aren't
+    clipped.
 
 ## Coverage & CI
 

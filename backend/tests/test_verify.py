@@ -74,3 +74,33 @@ def test_verify_detects_wrong_count(tiny_pdf, tmp_path):
     cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path), combine="interleave")
     issues = verify.verify_output(cfg, str(tiny_pdf), out)
     assert any(i["kind"] == "page_count" for i in issues)
+
+
+def test_verify_ocr_flags_multiple_empties():
+    issues = verify.verify_ocr({"d": [{"page": 1, "blocks": []}, {"page": 2, "blocks": []}]})
+    assert [i["page"] for i in issues] == [1, 2]
+
+
+def test_side_by_side_multiplier():
+    assert verify.EXPECTED_PAGE_MULTIPLIER["side_by_side"] == 1
+    assert verify.EXPECTED_PAGE_MULTIPLIER["grouped"] == 2
+
+
+class _NoneProvider:
+    def vision(self, image_path, prompt, max_tokens=None):
+        return None
+
+    def text(self, prompt, max_tokens=None):
+        return ""
+
+
+def test_verify_math_page_handles_no_json(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    res = verify.verify_math_page(_NoneProvider(), img, [{"type": "math", "latex": "a=b"}])
+    assert res["ok"] is True  # unknown is not a failure
+    assert any("no JSON" in i["problem"] for i in res["issues"])
+
+
+def test_leftover_words_allow_list():
+    assert verify.leftover_words("Attention le chat", allow={"attention", "chat"}) == []

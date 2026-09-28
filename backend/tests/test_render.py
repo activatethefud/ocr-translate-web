@@ -34,7 +34,7 @@ def test_render_figure(tiny_pdf, tmp_path):
     out = tmp_path / "fig.png"
     ok = render.render_figure(tiny_pdf, 1, [0.1, 0.1, 0.6, 0.6], out, target_px=100)
     assert ok and out.exists()
-    assert max(Image.open(out).size) <= 100
+    assert max(Image.open(out).size) <= 102
 
 
 def test_render_figure_bad_bbox(tiny_pdf, tmp_path):

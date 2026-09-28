@@ -60,6 +60,43 @@ def test_validate_page_options():
         PipelineConfig(sources=["a.pdf"], unprocessed="delete").validate()
 
 
+def test_validate_figure_pad():
+    with pytest.raises(ConfigError):
+        PipelineConfig(sources=["a.pdf"], figure_pad=-0.1).validate()
+
+
+def test_validate_concurrency():
+    with pytest.raises(ConfigError):
+        PipelineConfig(sources=["a.pdf"], concurrency=0).validate()
+
+
+def test_from_dict_page_control():
+    cfg = PipelineConfig.from_dict(
+        {
+            "sources": ["a.pdf"],
+            "pages": "1-3",
+            "unprocessed": "skip",
+            "output_page_size": "a4",
+            "scale_mode": "fit",
+            "concurrency": 6,
+            "figure_pad": 0.1,
+        }
+    )
+    assert cfg.pages == "1-3"
+    assert cfg.unprocessed == "skip"
+    assert cfg.output_page_size == "a4"
+    assert cfg.scale_mode == "fit"
+    assert cfg.concurrency == 6
+    assert cfg.figure_pad == 0.1
+
+
+def test_to_dict_contains_page_control():
+    cfg = PipelineConfig(sources=["a.pdf"], pages="2,4")
+    d = cfg.to_dict()
+    assert d["pages"] == "2,4"
+    assert "output_page_size" in d and "scale_mode" in d and "figure_pad" in d
+
+
 def test_resolve_sources(tmp_path):
     (tmp_path / "a.pdf").write_bytes(b"x")
     (tmp_path / "b.pdf").write_bytes(b"x")

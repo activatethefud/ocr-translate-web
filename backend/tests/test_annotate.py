@@ -30,3 +30,19 @@ def test_annotate_identity_translation():
 def test_annotate_skips_pure_math():
     blocks = [{"type": "math", "latex": r"x = \frac{a}{b}"}]
     assert annotate_blocks(FakeProvider(), blocks, "French") == 0
+
+
+class _MismatchProvider:
+    """Batch returns the wrong length, forcing the per-item fallback."""
+
+    def text(self, prompt, max_tokens=None):
+        if prompt.startswith("Translate each string"):
+            return '["only-one"]'
+        return "ZH"
+
+
+def test_annotate_batch_mismatch_falls_back_per_item():
+    blocks = [{"type": "math", "latex": r"\text{aaa} + \text{bbb}"}]
+    n = annotate_blocks(_MismatchProvider(), blocks, "Chinese")
+    assert n == 1
+    assert blocks[0]["latex"].count("ZH") == 2

@@ -47,6 +47,7 @@ class PipelineConfig:
     extra_preamble: str = ""
     text_width: str = "16.5cm"
     figure_px: int = 1800
+    figure_pad: float = 0.06  # pad figure boxes by this fraction (avoids clipping)
 
     # --- assembly ---
     margin_pt: int = 24
@@ -116,6 +117,10 @@ class PipelineConfig:
             raise ConfigError("output_page_size must be match, a4 or letter")
         if self.scale_mode not in ("fill", "fit"):
             raise ConfigError("scale_mode must be 'fill' or 'fit'")
+        if self.figure_pad < 0:
+            raise ConfigError("figure_pad must be >= 0")
+        if self.concurrency < 1:
+            raise ConfigError("concurrency must be >= 1")
 
     # ------------------------------------------------------------------
     def resolve_sources(self) -> list[str]:

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import fitz
 
+from .geometry import expand_bbox
+
 
 def page_count(pdf: str | Path) -> int:
     with fitz.open(pdf) as doc:
@@ -56,17 +58,23 @@ def render_figure(
     bbox: list[float],
     out_path: str | Path,
     target_px: int = 1800,
+    pad_frac: float = 0.06,
+    min_pad_pt: float = 6.0,
 ) -> bool:
     """Crop a figure from the *source* PDF at high resolution.
 
-    ``bbox`` is normalised ``[x0, y0, x1, y1]`` (0..1). Cropping from the source
-    (rather than the small OCR render) keeps figures sharp when the whole page is
-    later scaled up.
+    ``bbox`` is normalised ``[x0, y0, x1, y1]`` (0..1). The box is padded slightly
+    (``pad_frac`` of its size, at least ``min_pad_pt``) so model boxes that are a
+    little too tight don't clip the diagram. Cropping from the source (rather than
+    the small OCR render) keeps figures sharp when the whole page is scaled up.
     """
     with fitz.open(pdf) as doc:
         page = doc[page_no - 1]
         w, h = page.rect.width, page.rect.height
-        clip = fitz.Rect(bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
+        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            return False  # degenerate box (padding would manufacture a crop)
+        x0, y0, x1, y1 = expand_bbox(bbox, pad_frac, min_pad_pt, w, h)
+        clip = fitz.Rect(x0 * w, y0 * h, x1 * w, y1 * h)
         if clip.width <= 0 or clip.height <= 0:
             return False
         zoom = min(target_px / max(clip.width, clip.height), 24.0)

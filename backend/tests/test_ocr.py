@@ -58,3 +58,27 @@ def test_ocr_image_with_figures(tmp_path):
     prov = FakeProvider(blocks=blocks, tight=[[0.1, 0.1, 0.5, 0.5]])
     result = ocr_image(prov, img, "Serbian", "French")
     assert result["tight"] == [[0.1, 0.1, 0.5, 0.5]]
+
+
+class _FlakyProvider:
+    """Returns invalid JSON once, then a valid page."""
+
+    def __init__(self):
+        self.n = 0
+
+    def vision(self, image_path, prompt, max_tokens=None):
+        self.n += 1
+        if self.n == 1:
+            return "sorry, no json here"
+        return '{"blocks": [{"type": "prose", "target": "ok"}]}'
+
+    def text(self, prompt, max_tokens=None):
+        return "[]"
+
+
+def test_ocr_image_retries_on_bad_json(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = _FlakyProvider()
+    result = ocr_image(prov, img, "Serbian", "French")
+    assert result["blocks"] and prov.n == 2

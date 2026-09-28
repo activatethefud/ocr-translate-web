@@ -12,7 +12,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from . import cache, paths, render
+from . import cache, geometry, paths, render
 from .concurrency import parallel_map
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
@@ -111,12 +111,21 @@ def build_tex(
     tight = entry.get("tight") or []
     fig_names: dict[int, tuple[str, float]] = {}
     for i, fig in enumerate(figs):
-        bb = tight[i] if i < len(tight) and tight[i] else fig.get("bbox")
+        # take the union of the tight box and the main-call box (the latter is
+        # usually looser) so we don't clip the figure; render_figure pads a bit more.
+        main_bb = fig.get("bbox")
+        tight_bb = tight[i] if i < len(tight) and tight[i] else None
+        bb = geometry.union_bbox(tight_bb, main_bb)
         if not bb:
             continue
         name = f"fig_{page}_{i}.png"
         render.render_figure(
-            source_pdf, page, bb, paths.figure_path(cfg.workdir, base, page, i), cfg.figure_px
+            source_pdf,
+            page,
+            bb,
+            paths.figure_path(cfg.workdir, base, page, i),
+            cfg.figure_px,
+            pad_frac=cfg.figure_pad,
         )
         fig_names[id(fig)] = (name, max(0.05, float(bb[2]) - float(bb[0])))
 
