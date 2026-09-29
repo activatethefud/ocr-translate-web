@@ -130,6 +130,7 @@ export function App() {
   const [scaleMode, setScaleMode] = useState<"fill" | "fit">("fill");
   const [pageConcurrency, setPageConcurrency] = useState(4);
   const [figureMode, setFigureMode] = useState<"off" | "tight" | "judge">("tight");
+  const [outputName, setOutputName] = useState("");
   const [sessionHasKey, setSessionHasKey] = useState(false);
   const [sessionHint, setSessionHint] = useState("");
   const [stage, setStage] = useState("");
@@ -234,6 +235,7 @@ export function App() {
       scale_mode: scaleMode,
       concurrency: pageConcurrency,
       figure_mode: figureMode,
+      output_name: outputName.trim() || undefined,
     };
     if (!bilingual) body.combine = "interleave";
     try {
@@ -333,6 +335,11 @@ export function App() {
               <button className="ghost" type="button" onClick={forgetKey} disabled={!sessionHasKey}>Forget</button>
             </span>
           </div>
+          <label>Output name
+            <input value={outputName}
+                   placeholder={doc ? `${doc.filename.replace(/\.[^.]+$/, "")} (${targetLang}).pdf` : "output.pdf"}
+                   onChange={(e) => setOutputName(e.target.value)} />
+          </label>
           <label>Model
             <div className="row">
               <input list="models" value={model} onChange={(e) => setModel(e.target.value)} />

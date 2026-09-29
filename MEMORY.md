@@ -3,6 +3,22 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: output name + book-splitting plan
+
+- **Output name**: `JobCreate.output_name` -> artifact is saved as
+  `storage.safe_filename(name, fallback, ".pdf")` (strips directories/traversal,
+  sanitises chars, ensures `.pdf`, caps length). Blank -> the engine's default
+  `<base>.<target>.<mode>.pdf`. UI input with a computed placeholder.
+- **Book splitting** planned in [`JOB_SPLITTING.md`](JOB_SPLITTING.md): a `book` job
+  with internal contiguous chunks (child jobs using `pages="a-b"`), a scheduler with
+  a global concurrency/budget cap, **page-level merge** (we already emit per-page
+  `p-NN.pdf`), resume via the shared cache, per-chunk retry, and a rolling glossary
+  for terminology consistency. Milestones MS1-MS4.
+- Tests: **156 passed + 1 live** (+7: safe_filename/traversal/ext/fallback/truncate,
+  copy_artifact dest_name, output-name API default + explicit).
+
+---
+
 ## Session: speed + figure-boundary judge
 
 **Speed (quality-neutral):**

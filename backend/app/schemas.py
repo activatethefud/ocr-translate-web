@@ -42,6 +42,7 @@ class JobCreate(BaseModel):
     output_page_size: Literal["match", "a4", "letter"] = "match"
     scale_mode: Literal["fill", "fit"] = "fill"
     concurrency: int | None = None  # pages translated in parallel
+    output_name: str | None = None  # output document name (blank -> derived)
 
 
 class SessionUpdate(BaseModel):

@@ -34,6 +34,7 @@ class PipelineConfig:
     max_px: int = 1800
     workdir: str = "ocr_work"
     cache_dir: str = ""  # shared OCR cache root (falls back to workdir)
+    output_name: str = ""  # optional output document name (default is derived)
 
     # --- translation / typesetting ---
     source_lang: str = "auto"

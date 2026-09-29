@@ -22,6 +22,7 @@ survive, and diagrams are cropped from the original and re-inserted.
 
 - [`PLAN.md`](PLAN.md) — design, architecture, features, milestones, decisions.
 - [`TESTING.md`](TESTING.md) — test strategy, layers, failure injection, security tests.
+- [`JOB_SPLITTING.md`](JOB_SPLITTING.md) — plan for translating whole books in chunks.
 - [`AGENTS.md`](AGENTS.md) — guidance for coding agents (rules, layout, commands).
 - [`MEMORY.md`](MEMORY.md) — session/context log.
 

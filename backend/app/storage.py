@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -95,9 +96,32 @@ def finalize_upload(settings: Settings, doc_id: str, tmp_path: Path, filename: s
     }
 
 
-def copy_artifact(settings: Settings, job_id: str, src: str | Path, kind: str) -> Path:
+def safe_filename(name: str | None, fallback: str, ext: str = "") -> str:
+    """Turn a user-supplied name into a safe file name.
+
+    Strips any directory components (defeats ``../`` traversal), replaces unsafe
+    characters, ensures the extension, and caps the length. Falls back to
+    ``fallback`` when the result is empty.
+    """
+    raw = (name or "").strip()
+    base = Path(raw).name if raw else ""  # drop directories / traversal
+    base = re.sub(r"[^\w\-. ()\[\]]+", "_", base, flags=re.UNICODE).strip(" .")
+    if not base:
+        base = fallback
+    if ext and not base.lower().endswith(ext.lower()):
+        base += ext
+    return base[:140]
+
+
+def copy_artifact(
+    settings: Settings,
+    job_id: str,
+    src: str | Path,
+    kind: str,
+    dest_name: str | None = None,
+) -> Path:
     outdir = artifact_dir(settings, job_id)
     outdir.mkdir(parents=True, exist_ok=True)
-    dest = outdir / Path(src).name
+    dest = outdir / (dest_name or Path(src).name)
     shutil.copy2(src, dest)
     return dest

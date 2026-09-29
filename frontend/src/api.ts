@@ -131,6 +131,7 @@ export interface JobCreate {
   concurrency?: number;
   figure_pad?: number;
   figure_mode?: "off" | "tight" | "judge";
+  output_name?: string;
 }
 
 function newSessionId(): string {

@@ -73,3 +73,40 @@ def test_inspect_rejects_empty(tmp_path):
         p.save(pdf)
     with pytest.raises(ValueError):
         storage.inspect_pdf(pdf)
+
+
+def test_safe_filename_strips_traversal():
+    assert storage.safe_filename("../../etc/passwd", "fb", ".pdf") == "passwd.pdf"
+    assert storage.safe_filename("/abs/path/name", "fb", ".pdf") == "name.pdf"
+
+
+def test_safe_filename_extension():
+    assert storage.safe_filename("My Book", "fb", ".pdf") == "My Book.pdf"
+    assert storage.safe_filename("already.pdf", "fb", ".pdf") == "already.pdf"
+
+
+def test_safe_filename_replaces_unsafe_chars():
+    assert storage.safe_filename("bad:name*?.pdf", "fb", ".pdf") == "bad_name_.pdf"
+
+
+def test_safe_filename_fallback_and_truncation():
+    assert storage.safe_filename("   ", "fallback", ".pdf") == "fallback.pdf"
+    assert storage.safe_filename(None, "fallback", ".pdf") == "fallback.pdf"
+    assert len(storage.safe_filename("x" * 500, "fb", ".pdf")) <= 140
+
+
+def test_copy_artifact_uses_dest_name(tmp_path):
+    settings = Settings(storage_dir=tmp_path / "s")
+    settings.ensure_dirs()
+    src = tmp_path / "a.pdf"
+    src.write_bytes(b"%PDF-1.4")
+    dest = storage.copy_artifact(settings, "job1", src, "output", dest_name="Book.pdf")
+    assert dest.name == "Book.pdf" and dest.exists()
+
+
+def test_copy_artifact_default_name(tmp_path):
+    settings = Settings(storage_dir=tmp_path / "s")
+    settings.ensure_dirs()
+    src = tmp_path / "orig.pdf"
+    src.write_bytes(b"%PDF-1.4")
+    assert storage.copy_artifact(settings, "job1", src, "output").name == "orig.pdf"

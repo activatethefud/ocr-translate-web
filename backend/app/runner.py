@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from ocrtran import Pipeline, PipelineConfig
 from ocrtran.cache import save_json
@@ -157,10 +158,17 @@ class JobRunner:
                 return
             usage = result.usage or {}
             cost = cost_usd(cfg.model, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+            requested = (job_config.get("output_name") or "").strip()
+            items = list(result.outputs.items())
             s = db.get_session()
             try:
-                for _base, path in result.outputs.items():
-                    dest = storage.copy_artifact(self.settings, job_id, path, "output")
+                for _base, path in items:
+                    if requested:
+                        stem = requested if len(items) == 1 else f"{requested} ({Path(path).stem})"
+                        name = storage.safe_filename(stem, fallback=Path(path).name, ext=".pdf")
+                    else:
+                        name = Path(path).name
+                    dest = storage.copy_artifact(self.settings, job_id, path, "output", dest_name=name)
                     s.add(
                         db.Artifact(
                             job_id=job_id, kind=cfg.output_mode, path=str(dest), bytes=dest.stat().st_size

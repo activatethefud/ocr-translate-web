@@ -168,3 +168,24 @@ def test_page_image(client, tiny_pdf, xelatex_available):
     r = client.get(f"/api/jobs/{job_id}/pages/1/image")
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
+
+
+@pytest.mark.integration
+def test_job_output_name(client, tiny_pdf, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    doc = _upload(client, tiny_pdf).json()
+
+    named = client.post(
+        f"/api/documents/{doc['id']}/jobs", json={"target_lang": "French", "output_name": "My Thesis"}
+    ).json()["id"]
+    job = _wait(client, named)
+    assert job["status"] == "done", job
+    assert job["artifacts"][0]["filename"] == "My Thesis.pdf"
+
+    # blank -> derived default name
+    default = client.post(f"/api/documents/{doc['id']}/jobs", json={"target_lang": "French"}).json()["id"]
+    job2 = _wait(client, default)
+    assert job2["status"] == "done"
+    assert job2["artifacts"][0]["filename"].endswith(".pdf")
+    assert "French" in job2["artifacts"][0]["filename"]
