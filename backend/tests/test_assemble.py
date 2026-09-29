@@ -123,3 +123,12 @@ def test_assemble_output_size_letter(tiny_pdf, tmp_path):
     out = fitz.open(assemble.assemble(cfg)[base])
     assert (round(out[0].rect.width), round(out[0].rect.height)) == (612, 792)
     out.close()
+
+
+@pytest.mark.integration
+def test_assemble_default_omits_unselected(tiny_pdf, tmp_path):
+    # with the new default (skip) a page selection yields ONLY those pages
+    cfg, base = _prep(tiny_pdf, tmp_path, combine="interleave", pages="1")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 2  # orig 1 + translation 1, page 2 omitted
+    out.close()

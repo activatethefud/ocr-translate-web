@@ -3,6 +3,16 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: default unprocessed = skip
+
+- Changed the default for unselected pages from `original` to **`skip`** (engine
+  `PipelineConfig`, `JobCreate`, UI). So a page selection like `10,15,20` now yields
+  exactly the selected pages (3 originals + 3 translations), not the whole document.
+  `unprocessed=original` still available to keep the rest.
+- All 256 tests still pass (selection tests set the mode explicitly).
+
+---
+
 ## Session: broad multi-document testing
 
 Ran the full pipeline on 8 diverse documents from `~/Downloads`, 2 selected pages each,

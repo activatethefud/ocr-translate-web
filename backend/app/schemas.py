@@ -38,7 +38,7 @@ class JobCreate(BaseModel):
     verify_math: bool = False
     # page control
     pages: str = "all"
-    unprocessed: Literal["original", "skip"] = "original"
+    unprocessed: Literal["original", "skip"] = "skip"
     output_page_size: Literal["match", "a4", "letter"] = "match"
     scale_mode: Literal["fill", "fit"] = "fill"
     concurrency: int | None = None  # pages translated in parallel

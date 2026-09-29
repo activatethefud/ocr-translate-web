@@ -60,7 +60,7 @@ class PipelineConfig:
 
     # --- page control ---
     pages: str = "all"  # "all" | "1-5" | "2,4,7-9" | "3-" | "-4"
-    unprocessed: str = "original"  # original | skip (what to do with unselected pages)
+    unprocessed: str = "skip"  # skip | original (what to do with unselected pages)
     output_page_size: str = "match"  # match | a4 | letter
     scale_mode: str = "fill"  # fill (enlarge to fill) | fit (never upscale)
 

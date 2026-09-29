@@ -84,6 +84,10 @@ testing. You can also add a **glossary**, **do-not-translate** terms, and free-f
   then all translations) · `side-by-side` (both languages on one page).
 - `translated-only` — just the translated document.
 
+When you translate a **page selection** (e.g. `10,15,20`), the default is to **omit** the
+unselected pages (`unprocessed=skip`), so only those pages appear. Switch to
+**keep original page** to keep the whole document with just the chosen pages translated.
+
 ## License
 
 GPL-3.0-or-later — see [LICENSE](LICENSE).

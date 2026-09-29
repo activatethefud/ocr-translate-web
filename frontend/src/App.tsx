@@ -126,7 +126,7 @@ export function App() {
   const [llmInstructions, setLlmInstructions] = useState("");
   const [verifyMath, setVerifyMath] = useState(false);
   const [pagesSpec, setPagesSpec] = useState("all");
-  const [unprocessed, setUnprocessed] = useState<"original" | "skip">("original");
+  const [unprocessed, setUnprocessed] = useState<"original" | "skip">("skip");
   const [outputPageSize, setOutputPageSize] = useState<"match" | "a4" | "letter">("match");
   const [scaleMode, setScaleMode] = useState<"fill" | "fit">("fill");
   const [pageConcurrency, setPageConcurrency] = useState(4);
@@ -406,8 +406,8 @@ export function App() {
             <label>Unselected pages
               <select value={unprocessed}
                       onChange={(e) => setUnprocessed(e.target.value as "original" | "skip")}>
+                <option value="skip">skip / omit (default)</option>
                 <option value="original">keep original page</option>
-                <option value="skip">skip / omit</option>
               </select>
             </label>
             <label>Output page size

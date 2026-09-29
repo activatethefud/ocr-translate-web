@@ -125,3 +125,9 @@ def test_cache_dir_field():
     cfg = PipelineConfig(sources=["a.pdf"], cache_dir="/tmp/shared")
     assert cfg.cache_dir == "/tmp/shared"
     assert cfg.to_dict()["cache_dir"] == "/tmp/shared"
+
+
+def test_default_unprocessed_is_skip():
+    cfg = PipelineConfig(sources=["a.pdf"])
+    assert cfg.unprocessed == "skip"
+    assert cfg.to_dict()["unprocessed"] == "skip"
