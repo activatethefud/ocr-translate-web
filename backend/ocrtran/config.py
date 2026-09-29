@@ -25,8 +25,9 @@ class PipelineConfig:
     api_key_env: str = "DS_KEY"
     model: str = "deepseek-flash"
     timeout: int = 600
-    max_tokens: int = 16000
+    max_tokens: int = 32000
     prompt_version: str = "2"
+    reasoning_effort: str = "none"  # disable hidden thinking (deepseek-flash)
 
     # --- input ---
     sources: list[str] = field(default_factory=list)

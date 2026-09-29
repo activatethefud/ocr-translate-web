@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from ocrtran.config import PipelineConfig
 from ocrtran.latex import _block_tex, build_tex, text_to_tex
 
 
@@ -171,3 +172,14 @@ def test_build_tex_missing_crop_keeps_caption(tiny_pdf, tmp_path, monkeypatch):
     }
     tex = build_tex(cfg, tiny_pdf.stem, str(tiny_pdf), entry)
     assert "includegraphics" not in tex and "Fig X" in tex
+
+
+def test_build_tex_skips_empty_blocks(tiny_pdf, tmp_path):
+    from ocrtran import latex, paths
+
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"))
+    entry = {"page": 1, "tight": [], "blocks": []}
+    assert latex.build_tex(cfg, tiny_pdf.stem, str(tiny_pdf), entry)
+    # run_build must not produce a page PDF for a block-less page
+    latex.run_build(cfg, {tiny_pdf.stem: [entry]})
+    assert not paths.page_pdf(cfg.workdir, tiny_pdf.stem, 1).exists()

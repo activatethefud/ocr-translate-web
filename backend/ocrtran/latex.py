@@ -17,6 +17,45 @@ from .concurrency import parallel_map
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
 
+# Letters outside the math font's coverage (Cyrillic, Greek, CJK, ...): typeset them
+# with the main font via \text{...} so they render instead of "Missing character".
+_NONLATIN = re.compile(r"[^\x00-\x7F]+")
+
+
+def textify_math(s: str) -> str:
+    return _NONLATIN.sub(lambda m: "\\text{" + m.group(0) + "}", s or "")
+
+
+_TABLE_HEAD = re.compile(r"\\begin\{(array|tabular)\}\{([^}]*)\}")
+
+
+def fix_table_spec(s: str) -> str:
+    """Pad an array/tabular column spec so rows with extra ``&`` don't error.
+
+    Models often emit a table whose rows use more columns than the spec declares
+    ("Extra alignment tab has been changed to \\cr" -> no output). This widens the
+    spec to the maximum number of columns actually used.
+    """
+    m = _TABLE_HEAD.search(s or "")
+    if not m:
+        return s
+    spec = m.group(2)
+    body = s[m.end() :]
+    body = body.split("\\end{", 1)[0]
+    max_cols = 0
+    for row in re.split(r"\\\\", body):
+        max_cols = max(max_cols, row.count("&") + 1)
+    spec_cols = len(re.findall(r"[lcr]", spec)) + len(re.findall(r"p\{[^}]*\}", spec))
+    if max_cols > spec_cols:
+        add = max_cols - spec_cols
+        if spec.endswith("|"):
+            spec = spec[:-1] + "|c" * add + "|"
+        else:
+            spec = spec + "c" * add
+        s = s[: m.start(2)] + spec + s[m.end(2) :]
+    return s
+
+
 DISPLAY_ENVS = (
     "align",
     "align*",
@@ -42,7 +81,7 @@ def esc_text(s: str) -> str:
     parts, out = s.split("$"), []
     for i, seg in enumerate(parts):
         if i % 2 == 1:
-            out.append("$" + seg + "$")
+            out.append("$" + textify_math(seg) + "$")
         else:
             # drop control chars and un-escape set braces the model writes as \{ \}
             seg = "".join(c for c in seg if ord(c) >= 32 or c in "\t")
@@ -154,7 +193,10 @@ def _block_tex(b: dict, fig_names: dict) -> str | None:
             return None
         return f"\\begin{{{env}}}\n" + "\n".join(lines) + f"\n\\end{{{env}}}"
     if t in ("math", "table"):
-        w = wrap_math(b.get("latex", ""))
+        raw = b.get("latex", "")
+        if t == "table":
+            raw = fix_table_spec(raw)
+        w = wrap_math(textify_math(raw))
         if not w:
             return None
         number = str(b.get("number") or "").strip()
@@ -267,8 +309,10 @@ def run_build(
             pdfs=pdfs,
         ) -> None:
             cancel.check()
-            if entry.get("blank"):
-                return  # blank page -> no translated PDF, original is kept
+            if entry.get("blank") or not entry.get("blocks"):
+                # blank or failed-OCR page -> no translated PDF; the original is kept
+                # and the page is reported as missing (not a silent blank page)
+                return
             page = entry["page"]
             tex = build_tex(cfg, base, source_pdf, entry)
             tex_path = paths.page_tex(cfg.workdir, base, page)

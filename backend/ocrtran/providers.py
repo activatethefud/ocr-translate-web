@@ -51,6 +51,7 @@ class OpenAICompatibleProvider:
         timeout: int = 600,
         max_retries: int = 3,
         backoff: float = 2.0,
+        reasoning_effort: str = "",
         session: requests.Session | None = None,
     ) -> None:
         self.api_base = api_base
@@ -59,6 +60,9 @@ class OpenAICompatibleProvider:
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff = backoff
+        # "none" disables a reasoning model's hidden thinking (deepseek-flash);
+        # "" leaves the provider default.
+        self.reasoning_effort = reasoning_effort
         # One requests.Session per thread: the client is used from a thread pool
         # when pages are translated in parallel.
         self._session = session
@@ -89,6 +93,8 @@ class OpenAICompatibleProvider:
             "temperature": 0.0,
             "max_tokens": max_tokens,
         }
+        if self.reasoning_effort:
+            body["reasoning_effort"] = self.reasoning_effort
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         last = ""
         for attempt in range(self.max_retries):
@@ -101,7 +107,14 @@ class OpenAICompatibleProvider:
                         self.usage["prompt_tokens"] += int(u.get("prompt_tokens") or 0)
                         self.usage["completion_tokens"] += int(u.get("completion_tokens") or 0)
                         self.usage["calls"] += 1
-                    return data["choices"][0]["message"]["content"]
+                    choice = data["choices"][0]
+                    text = choice.get("message", {}).get("content") or ""
+                    # a reasoning model can burn the whole budget thinking and return
+                    # nothing; retry with a bigger budget instead of failing the page
+                    if choice.get("finish_reason") == "length" and not text.strip() and max_tokens < 96000:
+                        max_tokens = min(96000, max_tokens * 2)
+                        continue
+                    return text
                 last = json.dumps(data)[:300]
             except Exception as exc:  # noqa: BLE001 - retried
                 last = str(exc)
@@ -132,6 +145,7 @@ def build_provider(config, api_key: str | None = None) -> OpenAICompatibleProvid
     return OpenAICompatibleProvider(
         api_base=config.api_base,
         model=config.model,
+        reasoning_effort=getattr(config, "reasoning_effort", ""),
         api_key=config.resolve_api_key(api_key),
         timeout=config.timeout,
     )

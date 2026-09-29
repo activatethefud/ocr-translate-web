@@ -3,6 +3,30 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: diagnosis — blank pages on a Cyrillic curriculum PDF (fixed)
+
+Repro: `Програм-наставе-и-учења-за-1.-разред-ОШ.pdf` -> English, pages 1,2,5. Output had
+2 blank pages.
+
+Root causes (all fixed):
+1. **`deepseek-flash` is a reasoning model**: on dense pages it spent the *entire*
+   `max_tokens` on hidden reasoning (`finish_reason=length`, `reasoning_tokens=16000`,
+   `content=""`), so no JSON. Fix: `reasoning_effort="none"` (default) disables thinking
+   (~4.8k tokens, valid JSON); `max_tokens` -> 32000; provider retries a `length`+empty
+   response with a bigger budget.
+2. **Empty OCR** (valid JSON, `blocks: []`) was accepted -> a 716-byte empty PDF -> blank
+   page. Fix: retry once, flag with `error`; `run_build` now skips block-less pages so the
+   **original is kept** and the page is reported missing (no silent blank page).
+3. **Table with more `&` than the `array` spec** -> "Extra alignment tab" -> no output.
+   Fix: `latex.fix_table_spec` pads the column spec to the columns actually used.
+4. **Cyrillic letters inside math** -> "Missing character ... cmmi10". Fix:
+   `latex.textify_math` wraps non-Latin runs in `\text{...}` (main font covers them).
+
+Verified: reran pages 1,2,5 -> 3 translated pages built, output **6 pages, 0 empty,
+issues []**. Tests: **283 passed + 1 live**.
+
+---
+
 ## Session: R1/R2 abuse protection, P3 book features, robustness (5)
 
 **Abuse (R1/R2):** `app/ratelimit.py` weighted token bucket (job=20, book=50, upload=10)

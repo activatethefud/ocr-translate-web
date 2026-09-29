@@ -121,3 +121,25 @@ def test_prompt_asks_for_rich_structure():
 
     for token in ("list", "items", "ordered", "theorem", "heading", "level", "quote", "caption"):
         assert token in OCR_PROMPT
+
+
+class _EmptyProvider:
+    def __init__(self):
+        self.calls = 0
+
+    def vision(self, *a, **k):
+        self.calls += 1
+        return '{"blocks": []}'
+
+    def text(self, *a, **k):
+        return ""
+
+
+def test_ocr_image_retries_and_flags_empty(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = _EmptyProvider()
+    res = ocr_image(prov, img, "Serbian", "English")
+    assert res["blocks"] == []
+    assert "error" in res  # flagged, not silently accepted
+    assert prov.calls == 2  # one retry

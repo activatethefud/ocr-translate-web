@@ -20,5 +20,9 @@ def parallel_map(fn: Callable[[T], R], items: Iterable[T], workers: int) -> list
     workers = max(1, int(workers or 1))
     if workers == 1 or len(seq) <= 1:
         return [fn(x) for x in seq]
-    with ThreadPoolExecutor(max_workers=min(workers, len(seq))) as ex:
-        return list(ex.map(fn, seq))
+    try:
+        with ThreadPoolExecutor(max_workers=min(workers, len(seq))) as ex:
+            return list(ex.map(fn, seq))
+    except RuntimeError:
+        # interpreter shutting down / executor closed -> run inline
+        return [fn(x) for x in seq]

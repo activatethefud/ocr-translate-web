@@ -93,8 +93,10 @@ def ocr_image(
     """
     prompt = build_ocr_prompt(source_lang, target_lang, glossary, do_not_translate, instructions)
     obj = parse_json(provider.vision(image_path, prompt, max_tokens))
-    if obj is None:  # single retry, as empty responses happen
-        obj = parse_json(provider.vision(image_path, prompt, max_tokens))
+    if obj is None or not obj.get("blocks"):  # retry on invalid/empty responses
+        obj2 = parse_json(provider.vision(image_path, prompt, max_tokens))
+        if obj2 and obj2.get("blocks"):
+            obj = obj2
     blocks = (obj or {}).get("blocks", []) or []
     try:
         from PIL import Image
@@ -119,7 +121,10 @@ def ocr_image(
         # figures, so missed figures get added)
         blocks, tight = figures.refine_page(provider, image_path, blocks, tight)
 
-    return {"blocks": blocks, "tight": [b for b in tight if b]}
+    out: dict = {"blocks": blocks, "tight": [b for b in tight if b]}
+    if not blocks:
+        out["error"] = "empty model response (no blocks)"
+    return out
 
 
 def run_ocr(
