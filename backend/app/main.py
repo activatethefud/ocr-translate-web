@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +23,7 @@ from ocrtran.cache import load_json, save_json
 from ocrtran.pages import PageSpecError, parse_page_spec
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
-from . import books, db, guards, learning, storage
+from . import books, db, guards, learning, ratelimit, storage
 from .runner import JobRunner
 from .schemas import (
     BlockOut,
@@ -56,6 +56,9 @@ async def lifespan(app: FastAPI):
     _recover_orphaned_jobs()
     app.state.settings = settings
     app.state.runner = JobRunner(settings)
+    app.state.limiter = ratelimit.RateLimiter(
+        settings.rate_limit_per_min, settings.rate_burst, settings.max_sse_per_session
+    )
     app.state.dispatcher = books.BookDispatcher(settings)
     app.state.dispatcher.start()
     try:
@@ -66,6 +69,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OCR + Translate", version="0.1.0", lifespan=lifespan)
+app.add_middleware(ratelimit.RateLimitMiddleware)
 
 _cors = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
 app.add_middleware(
@@ -379,6 +383,40 @@ def estimate_document(
     )
 
 
+@app.get("/api/admin/stats")
+def admin_stats(x_admin_token: str = Header(default="")) -> dict:
+    settings = app.state.settings
+    if not settings.admin_token or x_admin_token != settings.admin_token:
+        raise HTTPException(403, "forbidden")
+    s = db.get_session()
+    try:
+        jobs = s.execute(select(db.Job)).scalars().all()
+        by_status: dict[str, int] = {}
+        for j in jobs:
+            by_status[j.status] = by_status.get(j.status, 0) + 1
+        usage = s.execute(select(db.Usage)).scalars().all()
+        chunks = s.execute(select(db.Chunk)).scalars().all()
+        ch_by_state: dict[str, int] = {}
+        for c in chunks:
+            ch_by_state[c.state] = ch_by_state.get(c.state, 0) + 1
+        docs = len(s.execute(select(db.Document)).scalars().all())
+    finally:
+        s.close()
+    limiter = getattr(app.state, "limiter", None)
+    return {
+        "documents": docs,
+        "jobs": {"total": len(jobs), "by_status": by_status},
+        "chunks": {"total": len(chunks), "by_state": ch_by_state},
+        "usage": {
+            "cost_usd": round(sum(u.cost_usd for u in usage), 4),
+            "prompt_tokens": sum(u.prompt_tokens for u in usage),
+            "completion_tokens": sum(u.completion_tokens for u in usage),
+            "calls": sum(u.calls for u in usage),
+        },
+        "ratelimit": limiter.stats() if limiter else {},
+    }
+
+
 @app.get("/api/learning")
 def learning_stats() -> dict:
     """Learned per-call token averages for each model (from real usage)."""
@@ -495,7 +533,15 @@ def cancel_job(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/events")
-async def job_events(job_id: str):
+async def job_events(job_id: str, request: Request):
+    settings = app.state.settings
+    limiter: ratelimit.RateLimiter | None = getattr(app.state, "limiter", None)
+    key = ""
+    if settings.limits_enabled and limiter is not None:
+        key = ratelimit.client_key(request, settings.trust_proxy)
+        if not limiter.acquire_slot(key):
+            raise HTTPException(429, "too many live event streams", headers={"Retry-After": "10"})
+
     async def gen():
         last = 0
         while True:
@@ -530,7 +576,15 @@ async def job_events(job_id: str):
                 return
             await asyncio.sleep(0.4)
 
-    return EventSourceResponse(gen())
+    async def wrapped():
+        try:
+            async for item in gen():
+                yield item
+        finally:
+            if key and limiter is not None:
+                limiter.release_slot(key)
+
+    return EventSourceResponse(wrapped())
 
 
 # --------------------------------------------------------------------------

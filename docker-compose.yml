@@ -7,6 +7,12 @@ services:
     environment:
       STORAGE_DIR: /data
       CORS_ORIGINS: http://localhost:8000
+      APP_MODE: ${APP_MODE:-public}                 # public => BYOK mandatory + limits on
+      TRUST_PROXY: ${TRUST_PROXY:-1}                # behind the proxy service below
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}                 # enables /api/admin/stats
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-120}
+      RATE_BURST: ${RATE_BURST:-40}
+      MAX_SSE_PER_SESSION: ${MAX_SSE_PER_SESSION:-3}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-deepseek-flash}
       API_BASE: ${API_BASE:-https://api.deepseek.com/chat/completions}
       DS_KEY: ${DS_KEY:-}                 # optional server key (testing fallback)
@@ -16,4 +22,13 @@ services:
       MAX_JOB_USD: ${MAX_JOB_USD:-2.0}
     volumes:
       - ./data:/data
+    restart: unless-stopped
+
+  proxy:
+    image: nginx:alpine
+    depends_on: [api]
+    ports:
+      - "8080:80"        # put TLS in front (or terminate here) for production
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped

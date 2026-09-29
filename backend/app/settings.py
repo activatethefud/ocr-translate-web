@@ -40,6 +40,11 @@ class Settings:
     max_jobs_per_hour: int = 10
     max_uploads_per_hour: int = 20
     dedupe_window: int = 60
+    rate_limit_per_min: int = 120
+    rate_burst: int = 40
+    max_sse_per_session: int = 3
+    trust_proxy: bool = False
+    admin_token: str = ""
     book_chunk_size: int = 25
     book_chunk_concurrency: int = 2
     rolling_glossary: bool = True
@@ -95,6 +100,11 @@ def load_settings() -> Settings:
         max_jobs_per_hour=_int("MAX_JOBS_PER_HOUR", 10),
         max_uploads_per_hour=_int("MAX_UPLOADS_PER_HOUR", 20),
         dedupe_window=_int("DEDUPE_WINDOW", 60),
+        rate_limit_per_min=_int("RATE_LIMIT_PER_MIN", 120),
+        rate_burst=_int("RATE_BURST", 40),
+        max_sse_per_session=_int("MAX_SSE_PER_SESSION", 3),
+        trust_proxy=os.environ.get("TRUST_PROXY", "0") in ("1", "true", "yes"),
+        admin_token=os.environ.get("ADMIN_TOKEN", ""),
         book_chunk_size=_int("BOOK_CHUNK_SIZE", 25),
         book_chunk_concurrency=_int("BOOK_CHUNK_CONCURRENCY", 2),
         rolling_glossary=os.environ.get("ROLLING_GLOSSARY", "1") not in ("0", "false", "no"),

@@ -1,0 +1,11 @@
+# Caddy alternative. Note: request *rate* limiting needs the caddy-ratelimit plugin
+# (nginx does it natively) - see deploy/nginx.conf.
+{$DOMAIN:localhost} {
+	encode gzip
+	request_body {
+		max_size 250MB
+	}
+	reverse_proxy api:8000 {
+		flush_interval -1   # stream SSE without buffering
+	}
+}
