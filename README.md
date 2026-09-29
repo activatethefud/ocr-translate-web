@@ -85,4 +85,4 @@ testing. You can also add a **glossary**, **do-not-translate** terms, and free-f
 
 ## License
 
-TBD.
+GPL-3.0-or-later — see [LICENSE](LICENSE).
