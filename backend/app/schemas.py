@@ -82,6 +82,7 @@ class JobOut(BaseModel):
     id: str
     document_id: str
     status: str
+    kind: str = "single"
     model: str
     source_lang: str
     target_lang: str
@@ -136,6 +137,24 @@ class ModelsResponse(BaseModel):
 
 class ErrorOut(BaseModel):
     detail: str
+
+
+class BookCreate(JobCreate):
+    chunk_size: int = 25
+    from_page: int = 1
+    to_page: int | None = None
+
+
+class ChunkOut(BaseModel):
+    id: str
+    idx: int
+    page_from: int
+    page_to: int
+    state: str
+    attempts: int
+    max_attempts: int
+    cost_usd: float
+    error: str | None = None
 
 
 class EstimateOut(BaseModel):

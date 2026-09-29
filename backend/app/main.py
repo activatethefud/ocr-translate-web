@@ -24,12 +24,14 @@ from ocrtran.pages import PageSpecError, parse_page_spec
 from ocrtran.pricing import estimate_for_pages
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
-from . import db, storage
+from . import books, db, storage
 from .runner import JobRunner
 from .schemas import (
     BlockOut,
     BlockPatch,
     BlockReorder,
+    BookCreate,
+    ChunkOut,
     DocumentOut,
     EstimateOut,
     JobCreate,
@@ -54,8 +56,13 @@ async def lifespan(app: FastAPI):
     db.init_db(settings.resolved_database_url())
     app.state.settings = settings
     app.state.runner = JobRunner(settings)
-    yield
-    app.state.runner.shutdown()
+    app.state.dispatcher = books.BookDispatcher(settings)
+    app.state.dispatcher.start()
+    try:
+        yield
+    finally:
+        app.state.dispatcher.stop()
+        app.state.runner.shutdown()
 
 
 app = FastAPI(title="OCR + Translate", version="0.1.0", lifespan=lifespan)
@@ -80,6 +87,10 @@ def _settings() -> Settings:
 
 def _runner() -> JobRunner:
     return app.state.runner
+
+
+def _dispatcher() -> books.BookDispatcher:
+    return app.state.dispatcher
 
 
 # --------------------------------------------------------------------------
@@ -196,6 +207,7 @@ def _job_out(s, job: db.Job) -> JobOut:
         id=job.id,
         document_id=job.document_id,
         status=job.status,
+        kind=job.kind,
         model=job.model,
         source_lang=job.source_lang,
         target_lang=job.target_lang,
@@ -392,10 +404,18 @@ def get_job(job_id: str):
 def cancel_job(job_id: str):
     s = db.get_session()
     try:
-        if not s.get(db.Job, job_id):
+        job = s.get(db.Job, job_id)
+        if not job:
             raise HTTPException(404, "job not found")
+        is_book = job.kind == "book"
+        if is_book:
+            job.status = "canceled"
+            s.commit()
     finally:
         s.close()
+    if is_book:
+        _dispatcher().wake()
+        return OkOut(ok=True, detail="book canceled")
     ok = _runner().cancel(job_id)
     return OkOut(ok=ok, detail="cancel requested" if ok else "job not running")
 
@@ -647,6 +667,132 @@ def usage():
         )
     finally:
         s.close()
+
+
+# --------------------------------------------------------------------------
+# book jobs (durable chunked translation)
+# --------------------------------------------------------------------------
+@app.post("/api/documents/{doc_id}/book", response_model=JobOut)
+def create_book_endpoint(
+    doc_id: str,
+    body: BookCreate,
+    settings: Settings = Depends(_settings_dep),
+    sid: str = Depends(_session_id),
+):
+    s = db.get_session()
+    try:
+        doc = s.get(db.Document, doc_id)
+        if not doc:
+            raise HTTPException(404, "document not found")
+        provided_key = (body.api_key or "").strip()
+        if provided_key:
+            row = _get_session(s, sid)
+            row.api_key_enc = get_cipher(settings).encrypt(provided_key)
+            api_key = provided_key
+        else:
+            row = s.get(db.Session, sid)
+            api_key = get_cipher(settings).decrypt(row.api_key_enc) if row else None
+        if not api_key:
+            api_key = os.environ.get(settings.api_key_env)
+        if not api_key:
+            raise HTTPException(400, f"no API key: save one for this session or set ${settings.api_key_env}")
+        cfg = body.model_dump()
+        cfg.pop("api_key", None)
+        cfg["model"] = body.model or settings.default_model
+        cfg["concurrency"] = body.concurrency or settings.page_concurrency
+        cfg["output_name"] = (
+            body.output_name or ""
+        ).strip() or f"{Path(doc.filename).stem} ({body.target_lang})"
+        book = books.create_book(
+            s,
+            settings,
+            doc,
+            cfg,
+            chunk_size=body.chunk_size,
+            page_from=body.from_page,
+            page_to=body.to_page,
+            session_id=sid,
+        )
+        out = _job_out(s, book)
+    finally:
+        s.close()
+    _dispatcher().wake()
+    return out
+
+
+@app.get("/api/jobs/{job_id}/chunks", response_model=list[ChunkOut])
+def job_chunks(job_id: str):
+    s = db.get_session()
+    try:
+        if not s.get(db.Job, job_id):
+            raise HTTPException(404, "job not found")
+        rows = (
+            s.execute(select(db.Chunk).where(db.Chunk.book_job_id == job_id).order_by(db.Chunk.idx))
+            .scalars()
+            .all()
+        )
+        return [
+            ChunkOut(
+                id=c.id,
+                idx=c.idx,
+                page_from=c.page_from,
+                page_to=c.page_to,
+                state=c.state,
+                attempts=c.attempts,
+                max_attempts=c.max_attempts,
+                cost_usd=c.cost_usd,
+                error=c.error,
+            )
+            for c in rows
+        ]
+    finally:
+        s.close()
+
+
+def _book_status(job_id: str, status: str) -> OkOut:
+    s = db.get_session()
+    try:
+        job = s.get(db.Job, job_id)
+        if not job:
+            raise HTTPException(404, "job not found")
+        if job.kind != "book":
+            raise HTTPException(400, "not a book job")
+        job.status = status
+        s.commit()
+    finally:
+        s.close()
+    _dispatcher().wake()
+    return OkOut(ok=True, detail=f"book {status}")
+
+
+@app.post("/api/jobs/{job_id}/pause", response_model=OkOut)
+def pause_book(job_id: str):
+    return _book_status(job_id, "paused")
+
+
+@app.post("/api/jobs/{job_id}/resume", response_model=OkOut)
+def resume_book(job_id: str):
+    return _book_status(job_id, "running")
+
+
+@app.post("/api/jobs/{job_id}/chunks/{chunk_id}/retry", response_model=OkOut)
+def retry_chunk(job_id: str, chunk_id: str):
+    s = db.get_session()
+    try:
+        chunk = s.get(db.Chunk, chunk_id)
+        if not chunk or chunk.book_job_id != job_id:
+            raise HTTPException(404, "chunk not found")
+        if chunk.state in ("queued", "running"):
+            return OkOut(ok=False, detail="chunk already queued/running")
+        chunk.state = "queued"
+        chunk.error = None
+        chunk.attempts = 0
+        chunk.finished_at = None
+        s.commit()
+    finally:
+        s.close()
+    _dispatcher().wake()
+    return OkOut(ok=True, detail="chunk requeued")
 
 
 # --------------------------------------------------------------------------

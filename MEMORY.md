@@ -3,6 +3,30 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: L2 durable book translation (implemented)
+
+- **DB**: `chunks` table + `jobs.kind`/`jobs.parent_id`; additive migration
+  `db.ensure_columns` (ALTER TABLE) so existing SQLite DBs upgrade in place.
+- **`app/books.py`**: `plan_chunks` (25-page default), `create_book`,
+  `BookDispatcher` (durable): pulls queued chunks from SQLite, dispatches with
+  `BOOK_CHUNK_CONCURRENCY`, **pauses when spend >= MAX_BOOK_USD**, resets orphaned
+  `running` chunks on startup (`recover`), retries failed chunks up to `max_attempts`,
+  page-level **final merge** (one assemble over the whole doc), and **keeps the
+  original page + records a warning** for missing translations.
+- **Rolling glossary** (`ROLLING_GLOSSARY=1`): after each chunk, a cheap text call
+  extracts term pairs, merged into the book glossary for later chunks.
+- **API**: `POST /api/documents/{id}/book`, `GET /api/jobs/{id}/chunks`,
+  `POST .../pause|resume|cancel`, `POST .../chunks/{cid}/retry`; book events stream
+  over the existing SSE endpoint. UI: **book mode** toggle + chunk size + chunk table
+  with pause/resume/retry.
+- **Verified live**: 3-page doc, chunk_size=2 -> chunks (1-2, 3-3) done, merged to a
+  6-page interleaved FR PDF named `book3 (French).pdf`, $0.0476.
+- Decisions: L2, chunk 25, pause on budget, chapters deferred, rolling glossary on,
+  keep-original-with-warning. Tests: **172 passed + 1 live** (+16).
+- Repo published: https://github.com/activatethefud/ocr-translate-web (private, via gh).
+
+---
+
 ## Session: output name + book-splitting plan
 
 - **Output name**: default is derived from the **original upload filename** +

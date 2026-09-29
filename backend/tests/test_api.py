@@ -14,6 +14,7 @@ from tests.conftest import FakeProvider
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr("ocrtran.pipeline.build_provider", lambda cfg, key=None: FakeProvider())
+    monkeypatch.setattr("app.books._default_provider", lambda cfg, key, st: FakeProvider())
     with TestClient(app) as c:
         # seed a session key so job creation succeeds (value is irrelevant: provider is faked)
         c.put("/api/session", json={"api_key": "test-key"})
@@ -197,3 +198,44 @@ def test_job_output_name(client, tiny_pdf, xelatex_available):
     job3 = _wait(client, sneaky)
     assert job3["status"] == "done"
     assert job3["artifacts"][0]["filename"] == "passwd.pdf"
+
+
+@pytest.mark.integration
+def test_book_api_flow(client, tiny_pdf, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    doc = _upload(client, tiny_pdf).json()
+    r = client.post(
+        f"/api/documents/{doc['id']}/book",
+        json={"target_lang": "French", "font_main": "Noto Serif", "combine": "interleave", "chunk_size": 1},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["kind"] == "book"
+    job_id = r.json()["id"]
+
+    job = _wait(client, job_id, timeout=180)
+    assert job["status"] == "done", job
+    chunks = client.get(f"/api/jobs/{job_id}/chunks").json()
+    assert [c["state"] for c in chunks] == ["done", "done"]
+    assert job["artifacts"]
+    assert client.get(job["artifacts"][0]["download_url"]).status_code == 200
+
+
+@pytest.mark.integration
+def test_book_pause_resume_and_status(client, tiny_pdf, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    doc = _upload(client, tiny_pdf).json()
+    job_id = client.post(
+        f"/api/documents/{doc['id']}/book", json={"target_lang": "French", "chunk_size": 1}
+    ).json()["id"]
+
+    assert client.post(f"/api/jobs/{job_id}/pause").json()["ok"] is True
+    assert client.post(f"/api/jobs/{job_id}/resume").json()["ok"] is True
+    job = _wait(client, job_id, timeout=180)
+    assert job["status"] == "done", job
+
+    # retrying a finished chunk is a no-op
+    chunks = client.get(f"/api/jobs/{job_id}/chunks").json()
+    r = client.post(f"/api/jobs/{job_id}/chunks/{chunks[0]['id']}/retry")
+    assert r.status_code == 200

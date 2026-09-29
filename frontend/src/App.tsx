@@ -5,6 +5,7 @@ import {
   type DocumentOut,
   type Estimate,
   type JobCreate,
+  type Chunk,
   type JobOut,
   type ModelInfo,
   type Page,
@@ -131,6 +132,9 @@ export function App() {
   const [pageConcurrency, setPageConcurrency] = useState(4);
   const [figureMode, setFigureMode] = useState<"off" | "tight" | "judge">("tight");
   const [outputName, setOutputName] = useState("");
+  const [bookMode, setBookMode] = useState(false);
+  const [chunkSize, setChunkSize] = useState(25);
+  const [chunks, setChunks] = useState<Chunk[]>([]);
   const [sessionHasKey, setSessionHasKey] = useState(false);
   const [sessionHint, setSessionHint] = useState("");
   const [stage, setStage] = useState("");
@@ -181,6 +185,7 @@ export function App() {
     const j = await api.getJob(job.id);
     setJob(j);
     if (j.status !== "queued") setPages(await api.pages(j.id));
+    if (j.kind === "book") setChunks(await api.chunks(j.id));
     if (j.status === "done") {
       api.report(j.id).then(setReport).catch(() => undefined);
       api.usage().then(setUsage).catch(() => undefined);
@@ -239,8 +244,10 @@ export function App() {
     };
     if (!bilingual) body.combine = "interleave";
     try {
-      const j = await api.createJob(doc.id, body);
-      setJob(j); setEvents([]); setPages([]); setReport(null);
+      const j = bookMode
+        ? await api.createBook(doc.id, { ...body, chunk_size: chunkSize })
+        : await api.createJob(doc.id, body);
+      setJob(j); setEvents([]); setPages([]); setReport(null); setChunks([]);
       if (apiKey) setSessionHasKey(true);
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
@@ -435,7 +442,19 @@ export function App() {
             <p className="muted">≈ ${estimate.est_cost_usd.toFixed(4)} · {estimate.est_calls} model calls
               ({estimate.pages} pages, {model})</p>
           )}
-          <button disabled={!doc || busy || !!running} onClick={onStart}>Start job</button>
+          <label className="check">
+            <input type="checkbox" checked={bookMode} onChange={(e) => setBookMode(e.target.checked)} />
+            book mode — translate in chunks (durable, resumable)
+          </label>
+          {bookMode && (
+            <label>Chunk size (pages)
+              <input type="number" min={1} max={200} value={chunkSize}
+                     onChange={(e) => setChunkSize(Math.max(1, Number(e.target.value) || 1))} />
+            </label>
+          )}
+          <button disabled={!doc || busy || !!running} onClick={onStart}>
+            {bookMode ? "Start book job" : "Start job"}
+          </button>
         </section>
 
         <section className="card">
@@ -468,6 +487,35 @@ export function App() {
                 <a key={a.id} className="download" href={a.download_url}>⬇ {a.filename}</a>
               ))}
               <pre className="log">{events.join("\n")}</pre>
+              {job.kind === "book" && (
+                <>
+                  <div className="row spread">
+                    <b>Chunks</b>
+                    <span>
+                      {running && <button className="ghost" onClick={() => api.pauseBook(job.id)}>Pause</button>}
+                      {job.status === "paused" && <button className="ghost" onClick={() => api.resumeBook(job.id)}>Resume</button>}
+                      {running && <button className="ghost" onClick={() => api.cancel(job.id)}>Cancel</button>}
+                    </span>
+                  </div>
+                  <table className="chunks">
+                    <thead><tr><th>Pages</th><th>State</th><th>Cost</th><th></th></tr></thead>
+                    <tbody>
+                      {chunks.map((c) => (
+                        <tr key={c.id}>
+                          <td>{c.page_from}–{c.page_to}</td>
+                          <td>{c.state}{c.error ? ` ⚠` : ""}</td>
+                          <td>{c.cost_usd > 0 ? `$${c.cost_usd.toFixed(4)}` : ""}</td>
+                          <td>
+                            {(c.state === "failed" || c.state === "done") && (
+                              <button className="ghost" onClick={async () => { await api.retryChunk(job.id, c.id); refreshJob(); }}>retry</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </>
           )}
           {report && (

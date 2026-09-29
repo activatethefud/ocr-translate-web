@@ -57,3 +57,5 @@ code { display: block; margin-top: 6px; font-size: 12px; word-break: break-all; 
 @media (max-width: 900px) { .cols, .review { grid-template-columns: 1fr; } }
 
 .right { margin-left: auto; }
+table.chunks { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+table.chunks th, table.chunks td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }

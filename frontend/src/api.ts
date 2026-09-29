@@ -26,7 +26,8 @@ export interface ArtifactOut {
 export interface JobOut {
   id: string;
   document_id: string;
-  status: "queued" | "running" | "done" | "failed" | "canceled";
+  kind?: string;
+  status: "queued" | "running" | "paused" | "finalizing" | "done" | "failed" | "canceled";
   model: string;
   source_lang: string;
   target_lang: string;
@@ -106,6 +107,24 @@ export interface Report {
   };
 }
 
+export interface Chunk {
+  id: string;
+  idx: number;
+  page_from: number;
+  page_to: number;
+  state: string;
+  attempts: number;
+  max_attempts: number;
+  cost_usd: number;
+  error?: string | null;
+}
+
+export interface BookCreate extends JobCreate {
+  chunk_size?: number;
+  from_page?: number;
+  to_page?: number;
+}
+
 export interface JobCreate {
   source_lang: string;
   target_lang: string;
@@ -179,6 +198,21 @@ export const api = {
 
   createJob: (docId: string, body: JobCreate) =>
     fetch(`/api/documents/${docId}/jobs`, json(body)).then(j<JobOut>),
+
+  createBook: (docId: string, body: BookCreate) =>
+    fetch(`/api/documents/${docId}/book`, json(body)).then(j<JobOut>),
+
+  chunks: (jobId: string) =>
+    fetch(`/api/jobs/${jobId}/chunks`, { headers: headers() }).then(j<Chunk[]>),
+
+  pauseBook: (jobId: string) =>
+    fetch(`/api/jobs/${jobId}/pause`, { method: "POST", headers: headers() }).then(j),
+
+  resumeBook: (jobId: string) =>
+    fetch(`/api/jobs/${jobId}/resume`, { method: "POST", headers: headers() }).then(j),
+
+  retryChunk: (jobId: string, chunkId: string) =>
+    fetch(`/api/jobs/${jobId}/chunks/${chunkId}/retry`, { method: "POST", headers: headers() }).then(j),
 
   getJob: (id: string) => fetch(`/api/jobs/${id}`, { headers: headers() }).then(j<JobOut>),
 

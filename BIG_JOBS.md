@@ -1,7 +1,13 @@
 # Handling big jobs (whole books)
 
-Status: **plan**. Replaces the earlier `JOB_SPLITTING.md` sketch with the full
-picture: durability, scheduling, resources, cost, and merging.
+Status: **core implemented**. Replaces the earlier `JOB_SPLITTING.md` sketch.
+
+Implemented (L2 durable): chunk planner, durable `chunks` table + orphan recovery,
+a background dispatcher with chunk concurrency, **pause on budget**, pause/resume/
+cancel/retry, page-level merge, keep-original-with-warning for missing pages, and an
+opt-in **rolling glossary**. `POST /api/documents/{id}/book`, `.../chunks`,
+`.../pause|resume|cancel`, `.../chunks/{cid}/retry`. Remaining: chapter bookmarks,
+auto chapter detection, multi-worker.
 
 ## 1. What "big" means
 
@@ -175,12 +181,12 @@ boundaries editable before start.
 | **P3** | chapter boundaries + bookmarks, blank-page skip, rolling glossary | 3–5 days |
 | **P4** | multi-worker / Postgres (only if needed) | later |
 
-## 12. Decisions needed
+## 12. Decisions (resolved)
 
-1. **Durability**: go straight to **L2 (durable dispatcher)** or ship **L1** first? *(rec: L1 then L2, schema ready)*
-2. **Default chunk size**: 25 or 50 pages? *(rec: 25 — smaller blast radius, more resumable)*
-3. **Global in-flight model calls**: default 8? *(depends on provider plan)*
-4. **Budget reached**: **stop & keep partial**, or **pause for confirmation**? *(rec: stop with partial + "continue")*
-5. **Chapters**: auto-detect headings vs user-supplied boundaries vs both? *(rec: user-supplied first, detect later)*
-6. **Rolling glossary**: worth the extra cheap calls for terminology consistency? *(rec: opt-in)*
-7. **Failed page in the merge**: hard error or keep-original-with-warning? *(rec: configurable, default hard error)*
+1. **Durability** — **L2 durable dispatcher** (chosen).
+2. **Chunk size** — **25 pages** default (`BOOK_CHUNK_SIZE`).
+3. **Budget reached** — **pause for confirmation** (`MAX_BOOK_USD`; resume to continue).
+4. **Chapters** — auto-detection **deferred** (later phase).
+5. **Rolling glossary** — **on** (`ROLLING_GLOSSARY`, opt-out).
+6. **Missing page** — **keep the original + warning** (job error lists the pages).
+7. Chunk concurrency — `BOOK_CHUNK_CONCURRENCY` (default 2).

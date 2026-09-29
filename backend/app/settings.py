@@ -32,6 +32,10 @@ class Settings:
     max_upload_mb: int = 200
     max_pages: int = 1000
     max_job_usd: float = 2.0
+    max_book_usd: float = 5.0
+    book_chunk_size: int = 25
+    book_chunk_concurrency: int = 2
+    rolling_glossary: bool = True
     worker_concurrency: int = 3
     page_concurrency: int = 4
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173"])
@@ -66,6 +70,10 @@ def load_settings() -> Settings:
         max_upload_mb=_int("MAX_UPLOAD_MB", 200),
         max_pages=_int("MAX_PAGES", 1000),
         max_job_usd=_float("MAX_JOB_USD", 2.0),
+        max_book_usd=_float("MAX_BOOK_USD", 5.0),
+        book_chunk_size=_int("BOOK_CHUNK_SIZE", 25),
+        book_chunk_concurrency=_int("BOOK_CHUNK_CONCURRENCY", 2),
+        rolling_glossary=os.environ.get("ROLLING_GLOSSARY", "1") not in ("0", "false", "no"),
         worker_concurrency=_int("WORKER_CONCURRENCY", 3),
         page_concurrency=_int("PAGE_CONCURRENCY", 4),
         cors_origins=[o.strip() for o in origins.split(",") if o.strip()],
