@@ -17,7 +17,7 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
   overfitting small samples. `GET /api/learning` exposes it; the estimate shows
   "tuned from N past calls".
 - Frontend: API key prefill/save in `sessionStorage`; estimate shows learned info.
-- Tests: **219 passed + 1 live** (+15: learning aggregate/blend/smoothing, public
+- Tests: **210 passed + 1 live** (+15: learning aggregate/blend/smoothing, public
   BYOK for jobs and books).
 
 ---
