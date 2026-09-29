@@ -71,7 +71,16 @@ def run_math_check(
             except Exception as exc:  # noqa: BLE001
                 entry["math_check"] = {"ok": True, "issues": [{"problem": str(exc)}]}
             ok = entry["math_check"]["ok"]
-            emit(on_event, Event("verify", "ok" if ok else "warn", base=base, page=entry["page"]))
+            emit(
+                on_event,
+                Event(
+                    "verify",
+                    "ok" if ok else "warn",
+                    base=base,
+                    page=entry["page"],
+                    data={"checked": entry["math_check"].get("checked", 0)},
+                ),
+            )
     return results
 
 

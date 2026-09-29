@@ -160,3 +160,33 @@ def test_verify_output_mixed_page_sizes(tmp_path):
         make_translated_page(paths.page_pdf(workdir, base, p))
     out = assemble.assemble(cfg)[base]
     assert verify.verify_output(cfg, str(src), out) == []
+
+
+class _CountingProvider:
+    def __init__(self):
+        self.calls = 0
+
+    def vision(self, *a, **k):
+        self.calls += 1
+        return '{"ok": true, "issues": []}'
+
+    def text(self, *a, **k):
+        return ""
+
+
+def test_verify_math_skips_model_when_no_formulas(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = _CountingProvider()
+    res = verify.verify_math_page(prov, img, [{"type": "prose", "target": "hi"}])
+    assert res["checked"] == 0
+    assert prov.calls == 0  # no model call for a page without formulas
+
+
+def test_verify_math_calls_model_only_for_formulas(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = _CountingProvider()
+    res = verify.verify_math_page(prov, img, [{"type": "math", "latex": "a=b"}])
+    assert res["checked"] == 1
+    assert prov.calls == 1
