@@ -11,11 +11,11 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
   `storage.safe_filename(name, fallback, ".pdf")` (strips directories/traversal,
   sanitises chars, ensures `.pdf`, caps length). Blank -> the engine's default
   `<base>.<target>.<mode>.pdf`. UI input with a computed placeholder.
-- **Book splitting** planned in [`JOB_SPLITTING.md`](JOB_SPLITTING.md): a `book` job
-  with internal contiguous chunks (child jobs using `pages="a-b"`), a scheduler with
-  a global concurrency/budget cap, **page-level merge** (we already emit per-page
-  `p-NN.pdf`), resume via the shared cache, per-chunk retry, and a rolling glossary
-  for terminology consistency. Milestones MS1-MS4.
+- **Big jobs** planned in [`BIG_JOBS.md`](BIG_JOBS.md) (supersedes JOB_SPLITTING.md):
+  book job -> contiguous chunks (child jobs via `pages="a-b"`), a dispatcher with a
+  global model-call limiter + budget cap + pause/resume/cancel, **page-level merge**
+  (we emit per-page `p-NN.pdf`), durable resume (L2) via the shared cache, per-chunk
+  retry, chapter bookmarks, opt-in rolling glossary. Phases P0-P4.
 - Tests: **156 passed + 1 live** (+7: safe_filename/traversal/ext/fallback/truncate,
   copy_artifact dest_name, output-name API default + explicit).
 
