@@ -40,8 +40,8 @@ class Settings:
     max_jobs_per_hour: int = 10
     max_uploads_per_hour: int = 20
     dedupe_window: int = 60
-    rate_limit_per_min: int = 120
-    rate_burst: int = 40
+    rate_limit_per_min: int = 240
+    rate_burst: int = 200
     max_sse_per_session: int = 3
     trust_proxy: bool = False
     admin_token: str = ""
@@ -100,8 +100,8 @@ def load_settings() -> Settings:
         max_jobs_per_hour=_int("MAX_JOBS_PER_HOUR", 10),
         max_uploads_per_hour=_int("MAX_UPLOADS_PER_HOUR", 20),
         dedupe_window=_int("DEDUPE_WINDOW", 60),
-        rate_limit_per_min=_int("RATE_LIMIT_PER_MIN", 120),
-        rate_burst=_int("RATE_BURST", 40),
+        rate_limit_per_min=_int("RATE_LIMIT_PER_MIN", 240),
+        rate_burst=_int("RATE_BURST", 200),
         max_sse_per_session=_int("MAX_SSE_PER_SESSION", 3),
         trust_proxy=os.environ.get("TRUST_PROXY", "0") in ("1", "true", "yes"),
         admin_token=os.environ.get("ADMIN_TOKEN", ""),

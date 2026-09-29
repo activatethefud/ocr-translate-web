@@ -10,8 +10,8 @@ services:
       APP_MODE: ${APP_MODE:-public}                 # public => BYOK mandatory + limits on
       TRUST_PROXY: ${TRUST_PROXY:-1}                # behind the proxy service below
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}                 # enables /api/admin/stats
-      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-120}
-      RATE_BURST: ${RATE_BURST:-40}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-240}
+      RATE_BURST: ${RATE_BURST:-200}
       MAX_SSE_PER_SESSION: ${MAX_SSE_PER_SESSION:-3}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-deepseek-flash}
       API_BASE: ${API_BASE:-https://api.deepseek.com/chat/completions}
