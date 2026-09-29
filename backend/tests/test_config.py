@@ -112,3 +112,16 @@ def test_resolve_api_key_env(monkeypatch):
     monkeypatch.setenv("TEST_KEY", "sekret")
     assert cfg.resolve_api_key() == "sekret"
     assert cfg.resolve_api_key("byok") == "byok"  # BYOK wins
+
+
+def test_validate_figure_mode():
+    PipelineConfig(sources=["a.pdf"]).validate()  # default ok
+    assert PipelineConfig(sources=["a.pdf"]).figure_mode == "tight"
+    with pytest.raises(ConfigError):
+        PipelineConfig(sources=["a.pdf"], figure_mode="magic").validate()
+
+
+def test_cache_dir_field():
+    cfg = PipelineConfig(sources=["a.pdf"], cache_dir="/tmp/shared")
+    assert cfg.cache_dir == "/tmp/shared"
+    assert cfg.to_dict()["cache_dir"] == "/tmp/shared"

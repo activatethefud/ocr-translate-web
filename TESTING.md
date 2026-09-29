@@ -151,7 +151,10 @@ Each must have a named test:
     the browser parses naive values as local time (elapsed timer was off by hours).
 18. **Figure crops too tight** — use `union(tight, main)` + `figure_pad` (and a
     minimum pad), clamp to the page, and reject degenerate boxes so diagrams aren't
-    clipped.
+    clipped. `figure_mode=judge` adds an LLM review that can only *expand* boxes.
+19. **Re-runs must be cached across jobs** — `cache_dir` is document-level; a second
+    job on the same page makes zero model calls.
+20. **Annotation batching** — all `\text{...}` groups on a page go in one call.
 
 ## Coverage & CI
 

@@ -102,6 +102,8 @@ class JobRunner:
                 "api_key_env": self.settings.api_key_env,
                 "sources": [str(storage.source_path(self.settings, doc_id))],
                 "workdir": str(storage.work_dir(self.settings, doc_id, job_id)),
+                # document-level cache: re-runs / edits reuse OCR across jobs
+                "cache_dir": str(storage.doc_dir(self.settings, doc_id) / "cache"),
             }
         )
 

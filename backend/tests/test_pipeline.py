@@ -50,3 +50,25 @@ def test_pipeline_caching_avoids_second_ocr(tmp_path, xelatex_available):
     first_calls = prov.calls.count("vision")
     Pipeline(cfg, provider=prov).run()
     assert prov.calls.count("vision") == first_calls  # served from cache
+
+
+@pytest.mark.integration
+def test_shared_cache_dir_avoids_reocr_across_jobs(tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    src = tmp_path / "one.pdf"
+    doc = fitz.open()
+    doc.new_page(width=200, height=200).insert_text((20, 40), "x")
+    doc.save(src)
+    doc.close()
+
+    shared = tmp_path / "shared_cache"
+    common = dict(sources=[str(src)], cache_dir=str(shared), target_lang="French", font_main="Noto Serif")
+
+    p1 = FakeProvider()
+    Pipeline(PipelineConfig(workdir=str(tmp_path / "w1"), **common), provider=p1).run()
+    assert p1.calls.count("vision") >= 1
+
+    p2 = FakeProvider()
+    Pipeline(PipelineConfig(workdir=str(tmp_path / "w2"), **common), provider=p2).run()
+    assert p2.calls.count("vision") == 0  # served from the shared cache

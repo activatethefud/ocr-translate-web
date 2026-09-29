@@ -46,3 +46,24 @@ def test_annotate_batch_mismatch_falls_back_per_item():
     n = annotate_blocks(_MismatchProvider(), blocks, "Chinese")
     assert n == 1
     assert blocks[0]["latex"].count("ZH") == 2
+
+
+class _CountingProvider:
+    def __init__(self):
+        self.text_calls = 0
+
+    def text(self, prompt, max_tokens=None):
+        self.text_calls += 1
+        start, end = prompt.find("["), prompt.rfind("]")
+        return prompt[start : end + 1] if 0 <= start < end else "[]"
+
+
+def test_annotate_batches_all_blocks_into_one_call():
+    blocks = [
+        {"type": "math", "latex": r"x + \text{aaa}"},
+        {"type": "math", "latex": r"y + \text{bbb}"},
+    ]
+    prov = _CountingProvider()
+    n = annotate_blocks(prov, blocks, "French")
+    assert n == 2
+    assert prov.text_calls == 1  # one batch for the whole page

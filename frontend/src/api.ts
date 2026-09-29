@@ -129,6 +129,8 @@ export interface JobCreate {
   output_page_size?: "match" | "a4" | "letter";
   scale_mode?: "fill" | "fit";
   concurrency?: number;
+  figure_pad?: number;
+  figure_mode?: "off" | "tight" | "judge";
 }
 
 function newSessionId(): string {

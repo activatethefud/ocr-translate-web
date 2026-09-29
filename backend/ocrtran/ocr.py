@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import re
 import threading
 from pathlib import Path
 
-from . import cache, paths, render
+from . import cache, figures, paths, render
 from .concurrency import parallel_map
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
+from .jsonutil import parse_json  # re-exported for callers/tests
 from .pages import parse_page_spec
 from .providers import Provider
 
@@ -40,28 +39,7 @@ Rules:
 - Return only the JSON.
 """
 
-BBOX_PROMPT = """Look at this page image. Identify each FIGURE/GRAPH (a plotted chart
-with axes - not a table, not a formula, not text).
-Return strict JSON: {"figures":[{"index":1,"description":"...","bbox":[x0,y0,x1,y1]}]}
-bbox is the tight box around ONLY that figure as fractions of the page (0..1).
-Do not include surrounding paragraphs, tables or headings. Return only JSON.
-"""
-
-
-def parse_json(txt: str | None) -> dict | None:
-    """Tolerant JSON extraction (models sometimes wrap output in fences/prose)."""
-    if not txt:
-        return None
-    txt = txt.strip()
-    txt = re.sub(r"^```[a-zA-Z]*\s*", "", txt)
-    txt = re.sub(r"\s*```$", "", txt)
-    i, j = txt.find("{"), txt.rfind("}")
-    if i < 0 or j < 0:
-        return None
-    try:
-        return json.loads(txt[i : j + 1])
-    except json.JSONDecodeError:
-        return None
+BBOX_PROMPT = figures.BBOX_PROMPT  # kept for backwards compatibility
 
 
 def build_ocr_prompt(
@@ -96,19 +74,38 @@ def ocr_image(
     glossary=None,
     do_not_translate=None,
     instructions=None,
+    figure_mode: str = "tight",
 ) -> dict:
-    """One page -> ``{"blocks": [...], "tight": [bbox, ...]}``."""
+    """One page -> ``{"blocks": [...], "tight": [bbox, ...]}``.
+
+    ``figure_mode`` controls the extra calls: ``off`` (none), ``tight`` (a dedicated
+    bbox pass) or ``judge`` (tight boxes reviewed/expanded by the model).
+    """
     prompt = build_ocr_prompt(source_lang, target_lang, glossary, do_not_translate, instructions)
     obj = parse_json(provider.vision(image_path, prompt, max_tokens))
     if obj is None:  # single retry, as empty responses happen
         obj = parse_json(provider.vision(image_path, prompt, max_tokens))
     blocks = (obj or {}).get("blocks", []) or []
-    tight: list[list[float]] = []
-    if want_bbox and any(b.get("type") == "figure" for b in blocks):
-        bj = parse_json(provider.vision(image_path, BBOX_PROMPT, 3000))
+    figs = [b for b in blocks if b.get("type") == "figure"]
+    tight: list[list[float] | None] = []
+
+    if want_bbox and figs and figure_mode in ("tight", "judge"):
+        bj = parse_json(provider.vision(image_path, figures.BBOX_PROMPT, 3000))
         if bj and isinstance(bj.get("figures"), list):
             tight = [f.get("bbox") for f in bj["figures"] if f.get("bbox")]
-    return {"blocks": blocks, "tight": tight}
+
+    if want_bbox and figs and figure_mode == "judge":
+        candidates = [
+            tight[i] if i < len(tight) and tight[i] else figs[i].get("bbox") for i in range(len(figs))
+        ]
+        judged = figures.judge_bboxes(
+            provider,
+            str(image_path),
+            [{"bbox": c, "description": figs[i].get("description", "")} for i, c in enumerate(candidates)],
+        )
+        tight = figures.apply_judge(candidates, judged)
+
+    return {"blocks": blocks, "tight": [b for b in tight if b]}
 
 
 def run_ocr(
@@ -132,6 +129,7 @@ def run_ocr(
             source, paths.pages_dir(cfg.workdir, base), cfg.dpi, cfg.max_px, pages=selected
         )
         prior = {e["page"]: e for e in (cache.load_json(paths.ocr_json(cfg.workdir, base)) or [])}
+        cache_root = cfg.cache_dir or cfg.workdir
         total_pages = len(images)
         collected: dict[int, dict] = {}
         lock = threading.Lock()
@@ -143,6 +141,7 @@ def run_ocr(
             base=base,
             doc_sha=doc_sha,
             prior=prior,
+            cache_root=cache_root,
             total_pages=total_pages,
             lock=lock,
             collected=collected,
@@ -155,7 +154,7 @@ def run_ocr(
                 Event("ocr", "progress", base=base, page=pi, index=idx, total=total_pages, message="page"),
             )
             key = cache.ocr_cache_key(doc_sha, pi, cfg.model, cfg.prompt_version)
-            cpath = cache.cache_path(cfg.workdir, key)
+            cpath = cache.cache_path(cache_root, key)
             cached = None if cfg.force else cache.load_json(cpath)
             if not cached and not cfg.force:
                 old = prior.get(pi)
@@ -174,6 +173,7 @@ def run_ocr(
                         glossary=cfg.glossary,
                         do_not_translate=cfg.do_not_translate,
                         instructions=cfg.llm_instructions,
+                        figure_mode=cfg.figure_mode,
                     )
                     cache.save_json(cpath, result)
                 entry = {"page": pi, "img": str(img), **result}

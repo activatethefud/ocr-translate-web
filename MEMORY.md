@@ -3,6 +3,30 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: speed + figure-boundary judge
+
+**Speed (quality-neutral):**
+- Annotation translations are **batched**: one text call per page (was one per math
+  block) — `annotate.annotate_blocks`.
+- **Shared OCR cache at the document level** (`cache_dir`): re-runs and page edits
+  across jobs are ~free. Measured: **44.7 s / $0.011 -> 1.4 s / $0.000** for a
+  cached re-run of one page.
+- `figure_mode="off"` skips the extra figure calls (1 model call/page, fastest).
+- Already in place: parallel page OCR + parallel XeLaTeX builds.
+
+**Figure boundaries (LLM judge):**
+- `ocrtran/figures.py`: `judge_bboxes` asks the model to review candidate boxes and
+  expand any that clip a diagram; the result is `union(candidate, judged)` so a box
+  can only grow. `build_tex` still unions with the main-call box and pads
+  (`figure_pad`).
+- Config `figure_mode`: `off | tight | judge` (default `tight`).
+- `ocrtran/jsonutil.py` (`parse_json`) to avoid an import cycle with `ocr`.
+
+**Tests:** **149 passed + 1 live** (+14 this round: judge, figure modes, one-call
+annotation batching, shared cache across workdirs, `cache_dir` config).
+
+---
+
 ## Session: language picker expansion
 
 - Frontend `LANGUAGES`: ~100 languages, sorted A→Z, plus an **Other…** option that

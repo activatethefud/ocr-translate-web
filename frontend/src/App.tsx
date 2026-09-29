@@ -129,6 +129,7 @@ export function App() {
   const [outputPageSize, setOutputPageSize] = useState<"match" | "a4" | "letter">("match");
   const [scaleMode, setScaleMode] = useState<"fill" | "fit">("fill");
   const [pageConcurrency, setPageConcurrency] = useState(4);
+  const [figureMode, setFigureMode] = useState<"off" | "tight" | "judge">("tight");
   const [sessionHasKey, setSessionHasKey] = useState(false);
   const [sessionHint, setSessionHint] = useState("");
   const [stage, setStage] = useState("");
@@ -232,6 +233,7 @@ export function App() {
       output_page_size: outputPageSize,
       scale_mode: scaleMode,
       concurrency: pageConcurrency,
+      figure_mode: figureMode,
     };
     if (!bilingual) body.combine = "interleave";
     try {
@@ -400,6 +402,14 @@ export function App() {
           <label>Parallel pages (speed)
             <input type="number" min={1} max={8} value={pageConcurrency}
                    onChange={(e) => setPageConcurrency(Math.max(1, Math.min(8, Number(e.target.value) || 1)))} />
+          </label>
+          <label>Figure boxes (quality vs speed)
+            <select value={figureMode}
+                    onChange={(e) => setFigureMode(e.target.value as "off" | "tight" | "judge")}>
+              <option value="off">off — trust the main call (fastest)</option>
+              <option value="tight">tight — extra pass for tighter boxes</option>
+              <option value="judge">judge — LLM reviews &amp; expands boxes</option>
+            </select>
           </label>
           <label>Glossary (one <code>source =&gt; target</code> per line)
             <textarea value={glossaryText} placeholder={"Prava => droite\nTalesova teorema => théorème de Thalès"}

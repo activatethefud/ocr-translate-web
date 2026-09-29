@@ -27,6 +27,8 @@ class JobCreate(BaseModel):
     dpi: int = 150
     max_px: int = 1800
     figure_px: int = 1800
+    figure_pad: float = 0.06
+    figure_mode: Literal["off", "tight", "judge"] = "tight"
     max_scale: float = 0.0
     text_width: str = "16.5cm"
     prompt_version: str = "1"

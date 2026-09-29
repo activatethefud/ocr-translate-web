@@ -93,3 +93,53 @@ def test_build_tex_figure_pad_config(tmp_path):
     cfg1 = PipelineConfig(sources=[str(pdf)], workdir=str(tmp_path / "w1"), figure_pad=1.2)
     latex.build_tex(cfg1, pdf.stem, str(pdf), entry)
     assert _has_red(paths.figure_path(cfg1.workdir, pdf.stem, 1, 0))
+
+
+class _JudgeProvider:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = 0
+
+    def vision(self, image_path, prompt, max_tokens=None):
+        self.calls += 1
+        return self.payload
+
+    def text(self, prompt, max_tokens=None):
+        return ""
+
+
+def test_judge_returns_corrected_box(tmp_path):
+    from ocrtran import figures
+
+    p = _JudgeProvider('{"figures":[{"index":0,"bbox":[0.05,0.05,0.5,0.5]}]}')
+    figs = [{"bbox": [0.1, 0.1, 0.4, 0.4], "description": "graph"}]
+    assert figures.judge_bboxes(p, str(tmp_path / "x.png"), figs) == [[0.05, 0.05, 0.5, 0.5]]
+
+
+def test_judge_invalid_json_returns_none(tmp_path):
+    from ocrtran import figures
+
+    p = _JudgeProvider("sorry, no json")
+    assert figures.judge_bboxes(p, "x", [{"bbox": [0.1, 0.1, 0.4, 0.4]}]) == [None]
+
+
+def test_judge_empty_figures_makes_no_call(tmp_path):
+    from ocrtran import figures
+
+    p = _JudgeProvider("{}")
+    assert figures.judge_bboxes(p, "x", []) == [] and p.calls == 0
+
+
+def test_judge_ignores_bad_index_and_box(tmp_path):
+    from ocrtran import figures
+
+    payload = '{"figures":[{"index":9,"bbox":[0,0,1,1]},{"index":0,"bbox":[0.1,0.1,0.2,0.2]}]}'
+    out = figures.judge_bboxes(_JudgeProvider(payload), "x", [{"bbox": [0, 0, 0.5, 0.5]}])
+    assert out == [[0.1, 0.1, 0.2, 0.2]]
+
+
+def test_apply_judge_is_monotonic():
+    from ocrtran.figures import apply_judge
+
+    assert apply_judge([[0.2, 0.2, 0.4, 0.4]], [[0.1, 0.1, 0.5, 0.5]]) == [[0.1, 0.1, 0.5, 0.5]]
+    assert apply_judge([[0.2, 0.2, 0.4, 0.4]], [None]) == [[0.2, 0.2, 0.4, 0.4]]

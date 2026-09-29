@@ -110,24 +110,35 @@ def _translate_one(provider: Provider, item: str, target_lang: str) -> str:
 
 
 def annotate_blocks(provider: Provider, blocks: list[dict], target_lang: str) -> int:
-    """Translate in-math annotations across a page's blocks in place. Returns count."""
-    n = 0
+    """Translate in-math annotations across a page's blocks in place. Returns count.
+
+    All annotation strings on the page are translated in **one** batch call (rather
+    than one call per block) to cut latency, with a per-item fallback on mismatch.
+    """
+    work: list[tuple[dict, str, list]] = []
     for b in blocks:
         if b.get("type") not in ("math", "table"):
             continue
         lx = b.get("latex", "")
         groups = [g for g in find_text_groups(lx) if is_source_text(g[2])]
-        if not groups:
-            continue
-        items = [g[2] for g in groups]
-        tr = _translate_batch(provider, items, target_lang)
-        if len(tr) != len(items):
-            tr = [_translate_one(provider, it, target_lang) for it in items]
-        for (a, z, _), zh in sorted(zip(groups, tr, strict=False), key=lambda x: -x[0][0]):
+        if groups:
+            work.append((b, lx, groups))
+    if not work:
+        return 0
+
+    items = [g[2] for _, _, groups in work for g in groups]
+    tr = _translate_batch(provider, items, target_lang)
+    if len(tr) != len(items):
+        tr = [_translate_one(provider, it, target_lang) for it in items]
+
+    cursor = 0
+    for b, lx, groups in work:
+        replacements = tr[cursor : cursor + len(groups)]
+        cursor += len(groups)
+        for (a, z, _), zh in sorted(zip(groups, replacements, strict=False), key=lambda x: -x[0][0]):
             lx = lx[:a] + "\\text{" + zh + "}" + lx[z:]
         b["latex"] = lx
-        n += 1
-    return n
+    return len(work)
 
 
 def run_annotate(

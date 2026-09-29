@@ -33,6 +33,7 @@ class PipelineConfig:
     dpi: int = 150
     max_px: int = 1800
     workdir: str = "ocr_work"
+    cache_dir: str = ""  # shared OCR cache root (falls back to workdir)
 
     # --- translation / typesetting ---
     source_lang: str = "auto"
@@ -48,6 +49,7 @@ class PipelineConfig:
     text_width: str = "16.5cm"
     figure_px: int = 1800
     figure_pad: float = 0.06  # pad figure boxes by this fraction (avoids clipping)
+    figure_mode: str = "tight"  # off | tight | judge (extra model calls for better boxes)
 
     # --- assembly ---
     margin_pt: int = 24
@@ -119,6 +121,8 @@ class PipelineConfig:
             raise ConfigError("scale_mode must be 'fill' or 'fit'")
         if self.figure_pad < 0:
             raise ConfigError("figure_pad must be >= 0")
+        if self.figure_mode not in ("off", "tight", "judge"):
+            raise ConfigError("figure_mode must be off, tight or judge")
         if self.concurrency < 1:
             raise ConfigError("concurrency must be >= 1")
 

@@ -82,3 +82,34 @@ def test_ocr_image_retries_on_bad_json(tmp_path):
     prov = _FlakyProvider()
     result = ocr_image(prov, img, "Serbian", "French")
     assert result["blocks"] and prov.n == 2
+
+
+def _fig_blocks():
+    return [{"type": "figure", "bbox": [0.1, 0.1, 0.2, 0.2], "description": "d"}]
+
+
+def test_figure_mode_off_makes_one_call(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = FakeProvider(blocks=_fig_blocks(), tight=[[0.0, 0.0, 0.3, 0.3]])
+    res = ocr_image(prov, img, "S", "F", figure_mode="off")
+    assert res["tight"] == []
+    assert prov.calls.count("vision") == 1
+
+
+def test_figure_mode_tight_uses_bbox_pass(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = FakeProvider(blocks=_fig_blocks(), tight=[[0.0, 0.0, 0.3, 0.3]])
+    res = ocr_image(prov, img, "S", "F", figure_mode="tight")
+    assert res["tight"] == [[0.0, 0.0, 0.3, 0.3]]
+    assert prov.calls.count("vision") == 2
+
+
+def test_figure_mode_judge_adds_a_call(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = FakeProvider(blocks=_fig_blocks(), tight=[[0.0, 0.0, 0.3, 0.3]])
+    res = ocr_image(prov, img, "S", "F", figure_mode="judge")
+    assert res["tight"] == [[0.0, 0.0, 0.3, 0.3]]  # judge failed -> candidate kept
+    assert prov.calls.count("vision") == 3
