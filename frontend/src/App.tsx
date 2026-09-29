@@ -13,7 +13,7 @@ import {
   type Usage,
 } from "./api";
 
-type Combine = "interleave" | "grouped" | "side_by_side";
+type Combine = "interleave" | "grouped" | "side_by_side" | "translated_only";
 
 const LANGUAGE_NAMES = [
   "Afrikaans", "Albanian", "Amharic", "Arabic", "Armenian", "Azerbaijani",
@@ -254,7 +254,6 @@ export function App() {
       figure_mode: figureMode,
       output_name: outputName.trim() || undefined,
     };
-    if (!bilingual) body.combine = "interleave";
     try {
       const j = bookMode
         ? await api.createBook(doc.id, { ...body, chunk_size: chunkSize })
@@ -381,18 +380,33 @@ export function App() {
             </label>
           </div>
           <label className="check">
-            <input type="checkbox" checked={bilingual} onChange={(e) => setBilingual(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={bilingual}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setBilingual(on);
+                if (!on) setCombine("translated_only");
+                else if (combine === "translated_only") setCombine("interleave");
+              }}
+            />
             keep original pages (bilingual)
           </label>
-          {bilingual && (
-            <label>Combine
-              <select value={combine} onChange={(e) => setCombine(e.target.value as Combine)}>
-                <option value="interleave">interleave (original, translation, …)</option>
-                <option value="grouped">grouped (all originals, then translations)</option>
-                <option value="side_by_side">side by side (both on one page)</option>
-              </select>
-            </label>
-          )}
+          <label>Combine
+            <select
+              value={combine}
+              onChange={(e) => {
+                const v = e.target.value as Combine;
+                setCombine(v);
+                setBilingual(v !== "translated_only");
+              }}
+            >
+              <option value="interleave">interleave (original, translation, …)</option>
+              <option value="grouped">grouped (all originals, then translations)</option>
+              <option value="side_by_side">side by side (both on one page)</option>
+              <option value="translated_only">translated only (no originals)</option>
+            </select>
+          </label>
           <label className="check">
             <input type="checkbox" checked={verifyMath} onChange={(e) => setVerifyMath(e.target.checked)} />
             verify formulas (+1 model call per page)

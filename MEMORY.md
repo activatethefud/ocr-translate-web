@@ -3,6 +3,21 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: "translated only" as a first-class combine option
+
+`combine` now accepts **`translated_only`** directly (previously only reachable by
+unchecking the bilingual box). `OUTPUT_MODES = COMBINE_MODES + ("translated_only",)`;
+`output_mode` returns `translated_only` when `not bilingual OR combine == "translated_only"`.
+
+- backend: `config.OUTPUT_MODES`, `output_mode`, `from_dict("mode")` mapping, schema Literal
+- frontend: `Combine` type + an always-visible **Combine** select with the 4 options; the
+  bilingual checkbox and the select stay in sync (translated_only <-> bilingual off)
+
+Tests: **288 passed + 1 live**. Verified pages 1/2/5: translated_only -> 3 pages,
+grouped -> 6 pages.
+
+---
+
 ## Session: target-language change served stale cache (fixed)
 
 Repro: same doc (`OMM Skripta sredjeno.pdf`, pages 60-65), translated to **Filipino**, then

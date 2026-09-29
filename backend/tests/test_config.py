@@ -131,3 +131,12 @@ def test_default_unprocessed_is_skip():
     cfg = PipelineConfig(sources=["a.pdf"])
     assert cfg.unprocessed == "skip"
     assert cfg.to_dict()["unprocessed"] == "skip"
+
+
+def test_combine_translated_only_direct():
+    """translated_only can be chosen via ``combine`` while ``bilingual`` stays True."""
+    cfg = PipelineConfig(sources=["a.pdf"], combine="translated_only", bilingual=True)
+    assert cfg.output_mode == "translated_only"
+    assert cfg.validate() is None
+    cfg2 = PipelineConfig.from_dict({"sources": ["a.pdf"], "combine": "translated_only"})
+    assert cfg2.output_mode == "translated_only"

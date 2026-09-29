@@ -132,3 +132,13 @@ def test_assemble_default_omits_unselected(tiny_pdf, tmp_path):
     out = fitz.open(assemble.assemble(cfg)[base])
     assert out.page_count == 2  # orig 1 + translation 1, page 2 omitted
     out.close()
+
+
+@pytest.mark.integration
+def test_assemble_translated_only_via_combine(tiny_pdf, tmp_path):
+    """combine='translated_only' with bilingual=True yields only translations."""
+    cfg, base = _prep(tiny_pdf, tmp_path, combine="translated_only")
+    outputs = assemble.assemble(cfg)
+    out = fitz.open(outputs[base])
+    assert out.page_count == 2
+    out.close()

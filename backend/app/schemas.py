@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-Combine = Literal["interleave", "grouped", "side_by_side"]
+Combine = Literal["interleave", "grouped", "side_by_side", "translated_only"]
 
 
 class GlossaryItem(BaseModel):

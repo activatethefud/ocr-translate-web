@@ -262,3 +262,10 @@ def test_pricing_endpoint(client):
     r = client.get("/api/pricing")
     assert r.status_code == 200
     assert any(p["model"] == "deepseek-flash" for p in r.json()["prices"])
+
+
+def test_job_create_accepts_translated_only_combine():
+    from app.schemas import JobCreate
+
+    body = JobCreate(combine="translated_only", target_lang="English")
+    assert body.combine == "translated_only"

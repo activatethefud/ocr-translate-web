@@ -155,7 +155,7 @@ export interface JobCreate {
   font_main?: string;
   linebreak_locale?: string;
   bilingual: boolean;
-  combine: "interleave" | "grouped" | "side_by_side";
+  combine: "interleave" | "grouped" | "side_by_side" | "translated_only";
   dpi?: number;
   max_px?: number;
   figure_px?: number;

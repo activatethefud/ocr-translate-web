@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 COMBINE_MODES = ("interleave", "grouped", "side_by_side")
+OUTPUT_MODES = COMBINE_MODES + ("translated_only",)
 
 
 class ConfigError(ValueError):
@@ -60,7 +61,7 @@ class PipelineConfig:
     margin_pt: int = 24
     max_scale: float = 0.0  # 0 = no cap (enlarge to fill the page)
     bilingual: bool = True
-    combine: str = "interleave"  # interleave | grouped | side_by_side
+    combine: str = "interleave"  # interleave | grouped | side_by_side | translated_only
 
     # --- page control ---
     pages: str = "all"  # "all" | "1-5" | "2,4,7-9" | "3-" | "-4"
@@ -75,10 +76,10 @@ class PipelineConfig:
     @property
     def output_mode(self) -> str:
         """One of: interleave | grouped | side_by_side | translated_only."""
-        if not self.bilingual:
+        if not self.bilingual or self.combine == "translated_only":
             return "translated_only"
         if self.combine not in COMBINE_MODES:
-            raise ConfigError(f"combine must be one of {COMBINE_MODES}, got {self.combine!r}")
+            raise ConfigError(f"combine must be one of {OUTPUT_MODES}, got {self.combine!r}")
         return self.combine
 
     @property
@@ -92,8 +93,9 @@ class PipelineConfig:
         # backward/UX compatibility with the skill's "mode" key
         mode = data.pop("mode", None)
         if mode is not None:
-            if mode == "translated-only":
+            if mode in ("translated-only", "translated_only"):
                 data.setdefault("bilingual", False)
+                data.setdefault("combine", "translated_only")
             elif mode in COMBINE_MODES:
                 data.setdefault("combine", mode)
         known = {f.name for f in fields(cls)}
@@ -116,7 +118,7 @@ class PipelineConfig:
             raise ConfigError("no sources configured")
         if self.dpi <= 0:
             raise ConfigError("dpi must be positive")
-        if self.output_mode not in COMBINE_MODES + ("translated_only",):
+        if self.output_mode not in OUTPUT_MODES:
             raise ConfigError(f"bad output mode {self.output_mode!r}")
         if self.unprocessed not in ("original", "skip"):
             raise ConfigError("unprocessed must be 'original' or 'skip'")
