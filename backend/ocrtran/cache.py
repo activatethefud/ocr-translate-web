@@ -43,3 +43,20 @@ def save_json(path: str | Path, obj) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(obj, ensure_ascii=False, indent=1))
+
+
+def prompt_sig(prompt_version: str, glossary=None, do_not_translate=None, instructions=None) -> str:
+    """Cache signature: the prompt version, plus a hash of any custom prompt content.
+
+    Keeps existing caches valid for default runs (empty glossary/instructions) while
+    guaranteeing that changing the glossary / do-not-translate / instructions is
+    **not** silently served from a stale cache.
+    """
+    extra = json.dumps(
+        [glossary or [], do_not_translate or [], (instructions or "").strip()],
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    if extra == '[[], [], ""]':
+        return prompt_version
+    return f"{prompt_version}-{hashlib.sha256(extra.encode()).hexdigest()[:10]}"

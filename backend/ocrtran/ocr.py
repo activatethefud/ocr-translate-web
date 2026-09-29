@@ -153,7 +153,10 @@ def run_ocr(
                 on_event,
                 Event("ocr", "progress", base=base, page=pi, index=idx, total=total_pages, message="page"),
             )
-            key = cache.ocr_cache_key(doc_sha, pi, cfg.model, cfg.prompt_version)
+            sig = cache.prompt_sig(
+                cfg.prompt_version, cfg.glossary, cfg.do_not_translate, cfg.llm_instructions
+            )
+            key = cache.ocr_cache_key(doc_sha, pi, cfg.model, sig)
             cpath = cache.cache_path(cache_root, key)
             cached = None if cfg.force else cache.load_json(cpath)
             if not cached and not cfg.force:

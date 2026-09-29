@@ -285,7 +285,7 @@ def test_book_missing_page_keeps_original_with_warning(env, xelatex_available):
             .first()
         )
         out = fitz.open(art.path)
-        assert out.page_count == 4  # page 2 kept as original instead of dropped
+        assert out.page_count == 3  # p1 orig+tx, p2 original only (kept once)
         out.close()
     finally:
         s.close()
@@ -312,5 +312,89 @@ def test_tick_skips_paused_book(env):
             .first()
         )
         assert chunk.state == "queued"  # not dispatched while paused
+    finally:
+        s.close()
+
+
+def test_tick_finalizes_when_chunks_terminal(env):
+    _make_doc(env, 2)
+    s = db.get_session()
+    try:
+        doc = s.get(db.Document, "docbook")
+        book = books.create_book(s, env, doc, {"target_lang": "French"}, chunk_size=1)
+        for c in (
+            s.execute(__import__("sqlalchemy").select(db.Chunk).where(db.Chunk.book_job_id == book.id))
+            .scalars()
+            .all()
+        ):
+            c.state = "failed"  # permanently failed chunk must not stall the book
+        s.commit()
+        bid = book.id
+    finally:
+        s.close()
+    d = _dispatcher(env)
+    calls = []
+    d._finalize = lambda b: calls.append(b)  # do not actually assemble
+    d.tick()
+    import time
+
+    for _ in range(60):
+        if calls:
+            break
+        time.sleep(0.05)
+    assert calls == [bid]
+
+
+@pytest.mark.integration
+def test_book_failed_chunk_keeps_original(env, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    _make_doc(env, 2)
+    s = db.get_session()
+    try:
+        doc = s.get(db.Document, "docbook")
+        book = books.create_book(
+            s,
+            env,
+            doc,
+            {"target_lang": "French", "font_main": "Noto Serif", "bilingual": True, "combine": "interleave"},
+            chunk_size=1,
+        )
+        bid = book.id
+        ids = [
+            c.id
+            for c in s.execute(
+                __import__("sqlalchemy")
+                .select(db.Chunk)
+                .where(db.Chunk.book_job_id == bid)
+                .order_by(db.Chunk.idx)
+            )
+            .scalars()
+            .all()
+        ]
+    finally:
+        s.close()
+    d = _dispatcher(env)
+    d._run_chunk(bid, ids[0])  # page 1 translated
+    s = db.get_session()
+    try:
+        c2 = s.get(db.Chunk, ids[1])
+        c2.state = "failed"
+        s.commit()
+    finally:
+        s.close()
+    d._finalize(bid)
+    s = db.get_session()
+    try:
+        job = s.get(db.Job, bid)
+        art = (
+            s.execute(__import__("sqlalchemy").select(db.Artifact).where(db.Artifact.job_id == bid))
+            .scalars()
+            .first()
+        )
+        out = fitz.open(art.path)
+        assert out.page_count == 3  # p1 orig+tx, p2 original only (kept)
+        out.close()
+        assert "2" in (job.error or "")
     finally:
         s.close()

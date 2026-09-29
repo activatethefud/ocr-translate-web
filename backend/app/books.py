@@ -170,7 +170,7 @@ class BookDispatcher:
                     s.commit()
                     _emit(book.id, "paused", "budget reached", {"spend": spend})
                     continue
-                if all(c.state == "done" for c in chunks):
+                if all(c.state in ("done", "failed") for c in chunks):
                     book.status = "finalizing"
                     s.commit()
                     self._executor.submit(self._finalize, book.id)

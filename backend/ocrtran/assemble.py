@@ -71,10 +71,14 @@ def _add_translation(
     page_no: int,
     size: tuple[float, float],
     area: fitz.Rect,
+    fallback: bool = False,
 ) -> None:
     tp = _translated_pdf(cfg, base, page_no)
     if tp is None:
-        _add_original(out, src, page_no - 1)  # graceful fallback
+        # interleave/grouped already include the original page, so only fall back in
+        # translated_only (where there is no original elsewhere).
+        if fallback:
+            _add_original(out, src, page_no - 1)
         return
     cd = fitz.open(str(tp))
     page = out.new_page(width=size[0], height=size[1])
@@ -123,7 +127,7 @@ def assemble(
                 _add_translation(out, src, cfg, base, p, size, area)
         elif mode == "translated_only":
             for p in selected:
-                _add_translation(out, src, cfg, base, p, size, area)
+                _add_translation(out, src, cfg, base, p, size, area, fallback=True)
         elif mode == "side_by_side":
             half = (outW - 3 * margin) / 2
             left = fitz.Rect(margin, margin, margin + half, outH - margin)

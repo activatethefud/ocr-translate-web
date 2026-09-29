@@ -3,6 +3,21 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: book resume correctness fixes
+
+- **Failed chunk no longer stalls the book**: `tick` finalizes when all chunks are
+  terminal (`done`/`failed`), not only when all are `done`. Missing pages are kept
+  as originals with a warning (as decided).
+- **Assembler duplicate fix**: a missing translation no longer inserts the original
+  *again* in `interleave`/`grouped` (it duplicated the page). It only falls back to
+  the original in `translated_only`.
+- **Cache respects custom prompt content**: `cache.prompt_sig()` folds glossary /
+  do-not-translate / instructions into the cache key, so editing them is never
+  served from a stale cache (default runs keep their existing cache).
+- Tests: **179 passed + 1 live** (+4).
+
+---
+
 ## Session: diagnosis — Chinese translation "issues" were verifier false alarms
 
 - Repro: `~/Downloads/modifikovani-model-nadmetanja-dve-vrste.pdf` (17 pages, 16

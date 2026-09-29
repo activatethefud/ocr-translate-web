@@ -30,3 +30,23 @@ def test_load_json_corrupt(tmp_path):
     p = tmp_path / "bad.json"
     p.write_text("{not json")
     assert cache.load_json(p) is None
+
+
+def test_prompt_sig_default_is_stable():
+    from ocrtran.cache import prompt_sig
+
+    assert prompt_sig("1") == "1"
+    assert prompt_sig("1", [], [], "") == "1"
+
+
+def test_prompt_sig_changes_with_content():
+    from ocrtran.cache import prompt_sig
+
+    base = prompt_sig("1")
+    assert prompt_sig("1", [{"source": "a", "target": "b"}]) != base
+    assert prompt_sig("1", None, ["Keep"]) != base
+    assert prompt_sig("1", None, None, "formal tone") != base
+    # deterministic
+    assert prompt_sig("1", [{"source": "a", "target": "b"}]) == prompt_sig(
+        "1", [{"source": "a", "target": "b"}]
+    )
