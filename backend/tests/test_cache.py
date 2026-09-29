@@ -50,3 +50,14 @@ def test_prompt_sig_changes_with_content():
     assert prompt_sig("1", [{"source": "a", "target": "b"}]) == prompt_sig(
         "1", [{"source": "a", "target": "b"}]
     )
+
+
+def test_prompt_sig_changes_with_language_and_figure_mode():
+    from ocrtran.cache import prompt_sig
+
+    base = prompt_sig("2", None, None, None, "Serbian", "English", "judge")
+    assert prompt_sig("2", None, None, None, "Serbian", "Filipino", "judge") != base
+    assert prompt_sig("2", None, None, None, "auto", "English", "judge") != base
+    assert prompt_sig("2", None, None, None, "Serbian", "English", "off") != base
+    # deterministic
+    assert prompt_sig("2", None, None, None, "Serbian", "English", "judge") == base

@@ -3,6 +3,26 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: target-language change served stale cache (fixed)
+
+Repro: same doc (`OMM Skripta sredjeno.pdf`, pages 60-65), translated to **Filipino**, then
+re-run to **English** -> the "English" PDF was still Filipino (only captions changed).
+The English job cost **$0.0002** (basically free) = it was served from cache.
+
+Cause: the shared per-document OCR cache stores **already-translated** blocks, but the key
+was `doc_sha + page + model + prompt_version` (+ glossary/instructions) -- **no language**.
+So changing the target language reused the old-language translation.
+
+Fix: `cache.prompt_sig` now also includes **source_lang, target_lang, figure_mode** (the two
+languages and figure mode all change the cached text). `ocr.run_ocr` passes them.
+Old unscoped cache entries simply become dead keys (no wrong output).
+
+Verified: reran pages 60-65 to English -> regenerated
+`OMM Skripta sredjeno (English, fixed).pdf` has **0 Filipino markers**, correct English.
+Tests: **284 passed + 1 live**.
+
+---
+
 ## Session: diagnosis — blank pages on a Cyrillic curriculum PDF (fixed)
 
 Repro: `Програм-наставе-и-учења-за-1.-разред-ОШ.pdf` -> English, pages 1,2,5. Output had

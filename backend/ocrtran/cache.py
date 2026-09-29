@@ -45,18 +45,30 @@ def save_json(path: str | Path, obj) -> None:
     p.write_text(json.dumps(obj, ensure_ascii=False, indent=1))
 
 
-def prompt_sig(prompt_version: str, glossary=None, do_not_translate=None, instructions=None) -> str:
-    """Cache signature: the prompt version, plus a hash of any custom prompt content.
+def prompt_sig(
+    prompt_version: str,
+    glossary=None,
+    do_not_translate=None,
+    instructions=None,
+    source_lang: str = "auto",
+    target_lang: str = "English",
+    figure_mode: str = "off",
+) -> str:
+    """Cache signature: prompt version + everything that changes the *output text*.
 
-    Keeps existing caches valid for default runs (empty glossary/instructions) while
-    guaranteeing that changing the glossary / do-not-translate / instructions is
-    **not** silently served from a stale cache.
+    The cached blocks contain already-**translated** text, so the signature must
+    include the source/target language — otherwise switching the target language
+    (e.g. Filipino -> English) is silently served from the old-language cache.
+    Custom prompt content (glossary / do-not-translate / instructions) and the
+    figure-detection mode are included for the same reason.
     """
     extra = json.dumps(
         [glossary or [], do_not_translate or [], (instructions or "").strip()],
         sort_keys=True,
         ensure_ascii=False,
     )
-    if extra == '[[], [], ""]':
+    variant = f"{source_lang}|{target_lang}|{figure_mode}"
+    if extra == '[[], [], ""]' and variant == "auto|English|off":
         return prompt_version
-    return f"{prompt_version}-{hashlib.sha256(extra.encode()).hexdigest()[:10]}"
+    h = hashlib.sha256((extra + "\x1f" + variant).encode()).hexdigest()[:10]
+    return f"{prompt_version}-{h}"

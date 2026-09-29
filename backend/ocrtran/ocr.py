@@ -192,7 +192,13 @@ def run_ocr(
                 )
                 return entry
             sig = cache.prompt_sig(
-                cfg.prompt_version, cfg.glossary, cfg.do_not_translate, cfg.llm_instructions
+                cfg.prompt_version,
+                cfg.glossary,
+                cfg.do_not_translate,
+                cfg.llm_instructions,
+                cfg.source_lang,
+                cfg.target_lang,
+                cfg.figure_mode,
             )
             key = cache.ocr_cache_key(doc_sha, pi, cfg.model, sig)
             cpath = cache.cache_path(cache_root, key)

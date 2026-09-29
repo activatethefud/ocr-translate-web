@@ -143,3 +143,32 @@ def test_ocr_image_retries_and_flags_empty(tmp_path):
     assert res["blocks"] == []
     assert "error" in res  # flagged, not silently accepted
     assert prov.calls == 2  # one retry
+
+
+def test_cache_is_language_specific(tmp_path, tiny_pdf):
+    """Switching the target language must NOT reuse the old-language cache."""
+    from ocrtran.config import PipelineConfig
+    from ocrtran.ocr import run_ocr
+
+    prov = FakeProvider()
+    cache = tmp_path / "cache"
+
+    def run(lang):
+        cfg = PipelineConfig(
+            sources=[str(tiny_pdf)],
+            workdir=str(tmp_path / lang),
+            cache_dir=str(cache),
+            source_lang="Serbian",
+            target_lang=lang,
+            figure_mode="off",
+            concurrency=1,
+        )
+        return run_ocr(cfg, prov)
+
+    run("Filipino")
+    n1 = len(prov.calls)
+    assert n1 > 0
+    run("Filipino")
+    assert len(prov.calls) == n1  # same language -> served from cache
+    run("English")
+    assert len(prov.calls) > n1  # different language -> re-OCR (no stale Filipino)
