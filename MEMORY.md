@@ -3,6 +3,32 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: broad multi-document testing
+
+Ran the full pipeline on 8 diverse documents from `~/Downloads`, 2 selected pages each,
+mixed targets (French/Chinese), `figure_mode` judge/tight. All succeeded, no missing
+pages, figures/lists/tables/theorems detected; total ~$0.20.
+
+| doc | type | pages | out | figures |
+|---|---|---|---|---|
+| dragan_djokic_linearna_algebra | text math (343p) | 2-3 | 345 | 0 |
+| Combinatorics (English) | text (357p) | 5-6 | 359 | 0 |
+| 2.KOMBINATORIKA | text, lists/math/table | 1-2 | 11 | 0 |
+| Preseci prizme i piramide | scan, geometry figures | 5-6 | 24 | 2 |
+| drugo polugodiste sveska | landscape handwriting scan | 1-2 | 23 | 0 |
+| 2026_ZI_Matematika_Test | form/tables/figures | 1-2 | 14 | 3 |
+| 2023-skripta-OMM | 86p scan, tiny page (304x335) | 1-2 | 88 | 1 |
+| camelot-py docs (English) | technical/code | 1-2 | 71 | 0 |
+
+Notes:
+- Default `unprocessed=original` keeps every unselected page, so translating 2 pages of a
+  343-page book yields a 345-page output; use `unprocessed=skip` for a 2-page-only result.
+- Most "\{" seen in outputs were from **untouched original pages** (set-difference
+  notation), not artifacts. Still hardened `esc_text` to un-escape `\{`/`\}` and strip
+  control chars from model prose.
+
+---
+
 ## Session: diagnosis — "5 pages instead of 6" was a silent fail (fixed)
 
 - Repro: `OMM Skripta sredjeno.pdf`, `pages=10,15,20`, `unprocessed=skip`,

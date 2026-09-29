@@ -31,3 +31,14 @@ def test_wrap_math_display_env_not_nested():
 def test_wrap_math_brackets_not_doubled():
     src = "\\[ a = b \\]"
     assert wrap_math(src) == src
+
+
+def test_esc_unescapes_set_braces():
+    # models emit set differences as \{..\}; render literal braces, not a backslash
+    out = esc_text("(R\\{−1\\}, ·)")
+    assert "\\textbackslash" not in out
+    assert out == "(R\\{−1\\}, ·)"  # \{ .. \} which TeX draws as { .. }
+
+
+def test_esc_strips_control_chars():
+    assert esc_text("va\x19i") == "vai"

@@ -44,6 +44,9 @@ def esc_text(s: str) -> str:
         if i % 2 == 1:
             out.append("$" + seg + "$")
         else:
+            # drop control chars and un-escape set braces the model writes as \{ \}
+            seg = "".join(c for c in seg if ord(c) >= 32 or c in "\t")
+            seg = seg.replace("\\{", "{").replace("\\}", "}")
             seg = seg.replace("\\", "\\textbackslash{}")
             for a, b in [
                 ("&", "\\&"),
