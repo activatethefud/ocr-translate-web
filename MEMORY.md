@@ -23,7 +23,7 @@ Root causes (all fixed):
    `latex.textify_math` wraps non-Latin runs in `\text{...}` (main font covers them).
 
 Verified: reran pages 1,2,5 -> 3 translated pages built, output **6 pages, 0 empty,
-issues []**. Tests: **283 passed + 1 live**.
+issues []**. Tests: **282 passed + 1 live**.
 
 ---
 
