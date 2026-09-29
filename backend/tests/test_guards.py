@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -165,7 +166,8 @@ def client_team(monkeypatch):
 
     monkeypatch.setattr("ocrtran.pipeline.build_provider", lambda cfg, key=None: FakeProvider())
     monkeypatch.setattr("app.books._default_provider", lambda cfg, key, st: FakeProvider())
-    with TestClient(app) as c:
+    sid = f"team-{uuid.uuid4().hex[:8]}"
+    with TestClient(app, headers={"X-Session-Id": sid}) as c:
         c.put("/api/session", json={"api_key": "k"})
         yield c
     monkeypatch.undo()
@@ -209,7 +211,8 @@ def client_public(monkeypatch):
 
     monkeypatch.setattr("ocrtran.pipeline.build_provider", lambda cfg, key=None: FakeProvider())
     monkeypatch.setattr("app.books._default_provider", lambda cfg, key, st: FakeProvider())
-    with TestClient(app) as c:
+    sid = f"pub-{uuid.uuid4().hex[:8]}"
+    with TestClient(app, headers={"X-Session-Id": sid}) as c:
         yield c
     monkeypatch.undo()
     get_settings.cache_clear()
@@ -236,6 +239,5 @@ def test_public_book_requires_byok(client_public, tiny_pdf):
     r = client_public.post(
         f"/api/documents/{doc['id']}/book",
         json={"target_lang": "French", "chunk_size": 1},
-        headers={"X-Session-Id": "public-book-fresh"},
     )
     assert r.status_code == 400, r.text
