@@ -113,7 +113,7 @@ export function App() {
 
   // BYOK key is kept in localStorage for convenience; only sent with the job
   // request and never persisted on the server.
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(() => sessionStorage.getItem("ocr_key") || "");
   const [sourceLang, setSourceLang] = useState("Serbian");
   const [targetLang, setTargetLang] = useState("French");
   const [model, setModel] = useState("deepseek-flash");
@@ -237,6 +237,7 @@ export function App() {
     if (!doc) return;
     if (!targetLang.trim()) { setError("Please choose or type a target language"); return; }
     setError(""); setBusy(true);
+    if (apiKey) sessionStorage.setItem("ocr_key", apiKey);
     const body: JobCreate = {
       source_lang: sourceLang.trim() || "auto", target_lang: targetLang.trim(), model,
       api_key: apiKey || undefined, font_main: fontMain,
@@ -265,6 +266,7 @@ export function App() {
 
   async function saveKey() {
     try {
+      sessionStorage.setItem("ocr_key", apiKey);
       const s = await api.saveKey(apiKey);
       setSessionHasKey(s.has_key); setSessionHint(s.hint ?? "");
     } catch (e) { setError(String(e)); }
@@ -274,7 +276,7 @@ export function App() {
     try {
       const s = await api.clearKey();
       setSessionHasKey(s.has_key); setSessionHint(""); setApiKey("");
-      localStorage.removeItem("ocrtran_key");
+      sessionStorage.removeItem("ocr_key");
     } catch (e) { setError(String(e)); }
   }
 
@@ -340,7 +342,7 @@ export function App() {
           )}
 
           <h2>2 · Translate</h2>
-          <label>API key (BYOK — stored for this session, encrypted)
+          <label>API key (BYOK — saved for this browser session)
             <input type="password" value={apiKey} placeholder="sk-…"
                    onChange={(e) => setApiKey(e.target.value)} />
           </label>
@@ -456,6 +458,9 @@ export function App() {
                 <> (range ${estimate.est_cost_low.toFixed(3)}–${(estimate.est_cost_high ?? 0).toFixed(3)})</>
               )}{" "}
               · {estimate.est_calls} calls · {estimate.pages} pages
+              {Number(estimate.assumptions?.learned_calls ?? 0) > 0 && (
+                <> · tuned from {String(estimate.assumptions?.learned_calls)} past calls</>
+              )}
               {estimate.breakdown && (
                 <div className="cost-breakdown">
                   {Object.entries(estimate.breakdown)

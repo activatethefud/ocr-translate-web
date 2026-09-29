@@ -191,3 +191,51 @@ def test_api_cooldown_rejects_different_job(client_team, tiny_pdf):
     r = client_team.post(f"/api/documents/{doc['id']}/jobs", json={"target_lang": "German"})
     assert r.status_code == 429
     assert "Retry-After" in r.headers
+
+
+# -- public mode: BYOK mandatory ------------------------------------------
+@pytest.fixture
+def client_public(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.settings import get_settings
+
+    monkeypatch.setenv("APP_MODE", "public")
+    monkeypatch.delenv("DS_KEY", raising=False)
+    get_settings.cache_clear()
+
+    from tests.conftest import FakeProvider
+
+    monkeypatch.setattr("ocrtran.pipeline.build_provider", lambda cfg, key=None: FakeProvider())
+    monkeypatch.setattr("app.books._default_provider", lambda cfg, key, st: FakeProvider())
+    with TestClient(app) as c:
+        yield c
+    monkeypatch.undo()
+    get_settings.cache_clear()
+
+
+def test_public_requires_byok(client_public, tiny_pdf):
+    doc = _upload(client_public, tiny_pdf)
+    H = {"X-Session-Id": "public-fresh"}  # a session with no stored key
+    # no key anywhere -> rejected (no server-key fallback in public mode)
+    r = client_public.post(f"/api/documents/{doc['id']}/jobs", json={"target_lang": "French"}, headers=H)
+    assert r.status_code == 400, r.text
+    assert "BYOK" in r.json()["detail"]
+    # providing the key works
+    r = client_public.post(
+        f"/api/documents/{doc['id']}/jobs",
+        json={"target_lang": "French", "api_key": "sk-user"},
+        headers=H,
+    )
+    assert r.status_code == 200, r.text
+
+
+def test_public_book_requires_byok(client_public, tiny_pdf):
+    doc = _upload(client_public, tiny_pdf)
+    r = client_public.post(
+        f"/api/documents/{doc['id']}/book",
+        json={"target_lang": "French", "chunk_size": 1},
+        headers={"X-Session-Id": "public-book-fresh"},
+    )
+    assert r.status_code == 400, r.text

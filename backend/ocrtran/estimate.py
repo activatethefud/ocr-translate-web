@@ -41,6 +41,7 @@ ANNOT_OUTPUT_TOKENS = 120
 ROLL_GLOSSARY_INPUT = 2500  # rolling glossary pass per chunk
 ROLL_GLOSSARY_OUTPUT = 300
 RETRY_FACTOR = 1.05  # occasional retries/failed pages
+LEARN_SMOOTHING = 15  # blended calls before learned averages dominate
 CJK_FACTORS = ("chinese", "japanese", "korean")
 
 
@@ -141,6 +142,7 @@ def predict_cost(
     chunk_size: int = 0,
     rolling_glossary: bool = False,
     retry_factor: float = RETRY_FACTOR,
+    learned: dict | None = None,
 ) -> dict:
     """Predict calls/tokens/USD for a job (or a book's worth of pages)."""
     pin, pout = price_for(model)
@@ -154,6 +156,16 @@ def predict_cost(
     if is_cjk(target_lang):
         base_out *= CJK_OUTPUT_MULT
     out_per_page = max(OUTPUT_MIN, min(OUTPUT_MAX, base_out))
+
+    # blend with learned per-call averages (converges as more jobs run)
+    learned_calls = 0
+    if learned and learned.get("calls", 0) > 0:
+        learned_calls = int(learned["calls"])
+        w = learned_calls / (learned_calls + LEARN_SMOOTHING)
+        in_per_call = w * learned.get("input_tokens_per_call", in_per_call) + (1 - w) * in_per_call
+        out_per_page = w * learned.get("output_tokens_per_call", out_per_page) + (1 - w) * out_per_page
+    in_per_call = int(round(in_per_call))
+    out_per_page = int(round(out_per_page))
 
     # (calls, input_tokens, output_tokens) per bucket
     buckets: dict[str, tuple[int, int, int]] = {}
@@ -212,6 +224,7 @@ def predict_cost(
             "target_script": "cjk" if is_cjk(target_lang) else "latin",
             "figure_mode": figure_mode,
             "verify_math": verify_math,
+            "learned_calls": learned_calls,
         },
         "prices": {m: {"in": p[0], "out": p[1]} for m, p in PRICES.items()},
     }

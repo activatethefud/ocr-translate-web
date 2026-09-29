@@ -3,6 +3,25 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: public mode (BYOK-only) + self-learning cost model
+
+- **Public mode**: `APP_MODE=public` (or `team`) → the server never falls back to
+  its own key; **BYOK is mandatory** (400 "BYOK required" otherwise). The key can be
+  remembered **client-side** for the session (`sessionStorage`), and is still
+  optionally stored server-side encrypted. `server_key_allowed` is true only in
+  `local`.
+- **Learning the cost**: `app/learning.py` aggregates the existing `usage` table into
+  per-model **learned** `input/output tokens per call` (one query per 30 s, cached).
+  `estimate.predict_cost(learned=...)` blends static heuristics with learned averages
+  via smoothing (`w = calls/(calls+15)`) so predictions converge with use without
+  overfitting small samples. `GET /api/learning` exposes it; the estimate shows
+  "tuned from N past calls".
+- Frontend: API key prefill/save in `sessionStorage`; estimate shows learned info.
+- Tests: **219 passed + 1 live** (+15: learning aggregate/blend/smoothing, public
+  BYOK for jobs and books).
+
+---
+
 ## Session: cost predictor from all job inputs
 
 - New `ocrtran/estimate.py`:

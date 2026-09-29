@@ -23,7 +23,7 @@ from ocrtran.cache import load_json, save_json
 from ocrtran.pages import PageSpecError, parse_page_spec
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
-from . import books, db, guards, storage
+from . import books, db, guards, learning, storage
 from .runner import JobRunner
 from .schemas import (
     BlockOut,
@@ -355,9 +355,10 @@ def estimate_document(
     finally:
         s.close()
     sig = estimate.analyze_document(storage.source_path(settings, doc_id))
+    model_used = model or settings.default_model
     return EstimateOut(
         **estimate.predict_cost(
-            model or settings.default_model,
+            model_used,
             n_pages,
             page_w=sig["page_w"],
             page_h=sig["page_h"],
@@ -373,8 +374,15 @@ def estimate_document(
             avg_chars_per_page=sig["avg_chars_per_page"],
             chunk_size=chunk_size,
             rolling_glossary=settings.rolling_glossary,
+            learned=learning.learned_for(model_used),
         )
     )
+
+
+@app.get("/api/learning")
+def learning_stats() -> dict:
+    """Learned per-call token averages for each model (from real usage)."""
+    return {"models": learning.model_stats()}
 
 
 @app.get("/api/pricing")
@@ -410,10 +418,12 @@ def create_job(
         else:
             row = s.get(db.Session, sid)
             api_key = get_cipher(settings).decrypt(row.api_key_enc) if row else None
-        if not api_key:
+        if not api_key and settings.server_key_allowed:
             api_key = os.environ.get(settings.api_key_env)
         if not api_key:
-            raise HTTPException(400, f"no API key: save one for this session or set ${settings.api_key_env}")
+            raise HTTPException(
+                400, "BYOK required: send an api_key with the request or save one for this session"
+            )
         cfg["model"] = body.model or settings.default_model
         cfg["concurrency"] = body.concurrency or settings.page_concurrency
         # default output name derives from the *original* file name + target language
@@ -698,7 +708,8 @@ def list_models(
     settings: Settings = Depends(_settings_dep),
     sid: str = Depends(_session_id),
 ):
-    key = api_key or _stored_key(settings, sid) or os.environ.get(settings.api_key_env)
+    env_key = os.environ.get(settings.api_key_env) if settings.server_key_allowed else None
+    key = api_key or _stored_key(settings, sid) or env_key
     if not key:
         return ModelsResponse(models=[ModelInfo(id=settings.default_model, inputs=["image"])])
     base = api_base or settings.api_base
@@ -756,10 +767,12 @@ def create_book_endpoint(
         else:
             row = s.get(db.Session, sid)
             api_key = get_cipher(settings).decrypt(row.api_key_enc) if row else None
-        if not api_key:
+        if not api_key and settings.server_key_allowed:
             api_key = os.environ.get(settings.api_key_env)
         if not api_key:
-            raise HTTPException(400, f"no API key: save one for this session or set ${settings.api_key_env}")
+            raise HTTPException(
+                400, "BYOK required: send an api_key with the request or save one for this session"
+            )
         cfg = body.model_dump()
         cfg.pop("api_key", None)
         cfg["model"] = body.model or settings.default_model

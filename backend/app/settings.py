@@ -52,6 +52,12 @@ class Settings:
         return self.app_mode != "local"
 
     @property
+    def server_key_allowed(self) -> bool:
+        """Only local runs may fall back to the server's own API key; in public
+        mode BYOK is mandatory."""
+        return self.app_mode == "local"
+
+    @property
     def docs_dir(self) -> Path:
         return self.storage_dir / "docs"
 
