@@ -347,6 +347,12 @@ def create_job(
             raise HTTPException(400, f"no API key: save one for this session or set ${settings.api_key_env}")
         cfg["model"] = body.model or settings.default_model
         cfg["concurrency"] = body.concurrency or settings.page_concurrency
+        # default output name derives from the *original* file name + target language
+        requested = (body.output_name or "").strip()
+        if not requested:
+            stem = Path(doc.filename).stem or "output"
+            requested = f"{stem} ({body.target_lang})"
+        cfg["output_name"] = requested
         try:
             selected = parse_page_spec(body.pages, doc.n_pages)
         except PageSpecError as exc:

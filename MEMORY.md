@@ -5,7 +5,9 @@ without re-deriving everything. Newest entries at the top. **No secrets here.**
 
 ## Session: output name + book-splitting plan
 
-- **Output name**: `JobCreate.output_name` -> artifact is saved as
+- **Output name**: default is derived from the **original upload filename** +
+  target language (`"<stem> (<target>).pdf"`, e.g. `doktorske (French).pdf`);
+  a user-supplied name is used as-is. Saved as
   `storage.safe_filename(name, fallback, ".pdf")` (strips directories/traversal,
   sanitises chars, ensures `.pdf`, caps length). Blank -> the engine's default
   `<base>.<target>.<mode>.pdf`. UI input with a computed placeholder.

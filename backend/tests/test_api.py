@@ -183,9 +183,17 @@ def test_job_output_name(client, tiny_pdf, xelatex_available):
     assert job["status"] == "done", job
     assert job["artifacts"][0]["filename"] == "My Thesis.pdf"
 
-    # blank -> derived default name
+    # blank -> default derived from the ORIGINAL file name + target language
     default = client.post(f"/api/documents/{doc['id']}/jobs", json={"target_lang": "French"}).json()["id"]
     job2 = _wait(client, default)
     assert job2["status"] == "done"
-    assert job2["artifacts"][0]["filename"].endswith(".pdf")
-    assert "French" in job2["artifacts"][0]["filename"]
+    assert job2["artifacts"][0]["filename"] == "tiny (French).pdf"
+
+    # a traversal-y name is neutralised
+    sneaky = client.post(
+        f"/api/documents/{doc['id']}/jobs",
+        json={"target_lang": "French", "output_name": "../../etc/passwd"},
+    ).json()["id"]
+    job3 = _wait(client, sneaky)
+    assert job3["status"] == "done"
+    assert job3["artifacts"][0]["filename"] == "passwd.pdf"
