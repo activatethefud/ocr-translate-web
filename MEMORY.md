@@ -3,6 +3,30 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: R1/R2 abuse protection, P3 book features, robustness (5)
+
+**Abuse (R1/R2):** `app/ratelimit.py` weighted token bucket (job=20, book=50, upload=10)
+as a pure-ASGI middleware (SSE-safe) + per-client **SSE connection slots**; 429 with
+`Retry-After`; audit log. `GET /api/admin/stats` (X-Admin-Token). `deploy/nginx.conf`
+(native limits + streaming) and `deploy/Caddyfile`; docker-compose gains a **proxy**
+service and `APP_MODE=public`/`TRUST_PROXY`/`ADMIN_TOKEN` defaults. Defaults:
+240 units/min, burst 200 (weights are large; the first 40 was too low and 429'd valid
+uploads+jobs).
+
+**P3 book features:** `render.page_ink_ratio`/`is_blank`; `skip_blank_pages` (default,
+threshold 0.0003) - blank pages are not OCR'd/built and the original is kept;
+chapter **boundaries** (`cfg.boundaries` + `BookCreate.boundaries`) -> a PDF outline/TOC
+mapping source pages to the combined output.
+
+**Robustness (5):** `verify.page_formulas` now also checks **inline** `$...$` formulas
+(not just display math); `render_figure` **auto-expands** a crop when ink touches the
+border (up to 4 tries); `estimate` gains an ETA (`est_seconds`, shown in the UI);
+`backend/tools/broad_test.py` is a committed multi-document harness.
+
+Tests: **276 passed + 1 live**.
+
+---
+
 ## Session: default unprocessed = skip
 
 - Changed the default for unselected pages from `original` to **`skip`** (engine

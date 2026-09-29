@@ -458,6 +458,7 @@ export function App() {
                 <> (range ${estimate.est_cost_low.toFixed(3)}–${(estimate.est_cost_high ?? 0).toFixed(3)})</>
               )}{" "}
               · {estimate.est_calls} calls · {estimate.pages} pages
+              {estimate.est_seconds ? <> · ~{Math.round(estimate.est_seconds / 60)} min</> : null}
               {Number(estimate.assumptions?.learned_calls ?? 0) > 0 && (
                 <> · tuned from {String(estimate.assumptions?.learned_calls)} past calls</>
               )}

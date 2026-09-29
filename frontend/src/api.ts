@@ -76,6 +76,7 @@ export interface Estimate {
   est_cost_usd: number;
   est_cost_low?: number;
   est_cost_high?: number;
+  est_seconds?: number;
   breakdown?: Record<string, number>;
   assumptions?: Record<string, number | string | boolean>;
 }

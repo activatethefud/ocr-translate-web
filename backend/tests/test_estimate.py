@@ -82,3 +82,10 @@ def test_analyze_document_detects_figures(tmp_path):
     d.close()
     sig = analyze_document(pdf)
     assert sig["figure_fraction"] == 1.0
+
+
+def test_estimate_has_eta():
+    r = predict_cost("deepseek-flash", 10)
+    assert r["est_seconds"] > 0
+    faster = predict_cost("deepseek-flash", 10, concurrency=8)
+    assert faster["est_seconds"] < r["est_seconds"]

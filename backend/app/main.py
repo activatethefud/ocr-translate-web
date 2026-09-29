@@ -344,6 +344,7 @@ def estimate_document(
     dpi: int = 150,
     max_px: int = 1800,
     chunk_size: int = 0,
+    concurrency: int = 4,
     settings: Settings = Depends(_settings_dep),
 ):
     """Predict cost from the document + all the job options."""
@@ -379,6 +380,7 @@ def estimate_document(
             chunk_size=chunk_size,
             rolling_glossary=settings.rolling_glossary,
             learned=learning.learned_for(model_used),
+            concurrency=concurrency,
         )
     )
 

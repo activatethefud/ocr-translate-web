@@ -42,6 +42,7 @@ ROLL_GLOSSARY_INPUT = 2500  # rolling glossary pass per chunk
 ROLL_GLOSSARY_OUTPUT = 300
 RETRY_FACTOR = 1.05  # occasional retries/failed pages
 LEARN_SMOOTHING = 15  # blended calls before learned averages dominate
+SECONDS_PER_CALL = 40  # rough wall-clock per model call (for ETA)
 CJK_FACTORS = ("chinese", "japanese", "korean")
 
 
@@ -143,6 +144,7 @@ def predict_cost(
     rolling_glossary: bool = False,
     retry_factor: float = RETRY_FACTOR,
     learned: dict | None = None,
+    concurrency: int = 4,
 ) -> dict:
     """Predict calls/tokens/USD for a job (or a book's worth of pages)."""
     pin, pout = price_for(model)
@@ -201,6 +203,7 @@ def predict_cost(
     subtotal = sum(breakdown.values())
     total = subtotal * retry_factor
     calls = sum(c for c, _i, _o in buckets.values())
+    est_seconds = int(round(calls * SECONDS_PER_CALL / max(1, concurrency)))
     inp = sum(i for _c, i, _o in buckets.values())
     out = sum(o for _c, _i, o in buckets.values())
     return {
@@ -212,6 +215,7 @@ def predict_cost(
         "est_cost_usd": round(total, 4),
         "est_cost_low": round(total * 0.6, 4),
         "est_cost_high": round(total * 1.7, 4),
+        "est_seconds": est_seconds,
         "breakdown": {**breakdown, "retry_overhead": round(subtotal * (retry_factor - 1), 6)},
         "assumptions": {
             "image_tokens_per_page": img,
@@ -225,6 +229,7 @@ def predict_cost(
             "figure_mode": figure_mode,
             "verify_math": verify_math,
             "learned_calls": learned_calls,
+            "est_seconds": est_seconds,
         },
         "prices": {m: {"in": p[0], "out": p[1]} for m, p in PRICES.items()},
     }

@@ -143,3 +143,22 @@ def test_apply_judge_is_monotonic():
 
     assert apply_judge([[0.2, 0.2, 0.4, 0.4]], [[0.1, 0.1, 0.5, 0.5]]) == [[0.1, 0.1, 0.5, 0.5]]
     assert apply_judge([[0.2, 0.2, 0.4, 0.4]], [None]) == [[0.2, 0.2, 0.4, 0.4]]
+
+
+def test_render_figure_auto_expand_reduces_border_ink(tmp_path):
+    import fitz
+
+    from ocrtran.render import _border_ink
+
+    pdf = tmp_path / "black.pdf"
+    d = fitz.open()
+    page = d.new_page(width=300, height=300)
+    page.draw_rect(fitz.Rect(100, 100, 200, 200), color=None, fill=(0, 0, 0))
+    d.save(pdf)
+    d.close()
+    bbox = [0.4, 0.4, 0.55, 0.55]  # fully inside the black square -> border all black
+    no = tmp_path / "no.png"
+    au = tmp_path / "au.png"
+    render.render_figure(pdf, 1, bbox, no, pad_frac=0.0, min_pad_pt=0.0, auto_expand=False)
+    render.render_figure(pdf, 1, bbox, au, pad_frac=0.0, min_pad_pt=0.0, auto_expand=True)
+    assert _border_ink(no) > _border_ink(au)  # expansion pulled in white margin

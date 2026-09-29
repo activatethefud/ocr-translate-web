@@ -29,17 +29,32 @@ Extracted math blocks (index: LaTeX):
 """
 
 
+_INLINE_MATH = re.compile(r"\$([^$]+)\$")
+
+
+def page_formulas(blocks: list[dict]) -> list[str]:
+    """All formulas on a page: display math/tables + inline ``$...$`` in text."""
+    out: list[str] = []
+    for b in blocks:
+        t = b.get("type")
+        if t in ("math", "table"):
+            if b.get("latex"):
+                out.append(b["latex"])
+        elif t in ("prose", "heading", "quote", "theorem"):
+            out += _INLINE_MATH.findall(b.get("target") or b.get("source") or "")
+        elif t == "list":
+            for it in b.get("items") or []:
+                out += _INLINE_MATH.findall(it.get("target") or it.get("source") or "")
+    return out
+
+
 def verify_math_page(
     provider: Provider, image_path: str | Path, blocks: list[dict], max_tokens: int = 1500
 ) -> dict:
     """Ask a vision model whether the extracted formulas match the page image."""
     from .ocr import parse_json
 
-    math = [
-        (i, b.get("latex", ""))
-        for i, b in enumerate(blocks)
-        if b.get("type") in ("math", "table") and b.get("latex")
-    ]
+    math = list(enumerate(page_formulas(blocks)))
     if not math:
         return {"ok": True, "issues": [], "checked": 0}
     listing = "\n".join(f"{i}: {lx}" for i, lx in math)

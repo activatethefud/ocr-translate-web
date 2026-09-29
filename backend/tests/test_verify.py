@@ -228,3 +228,41 @@ def test_missing_pages_empty_when_all_built(tmp_path):
     for p in (1, 2):
         make_translated_page(paths.page_pdf(workdir, src.stem, p))
     assert verify.missing_pages(cfg, {src.stem: [{"page": 1}, {"page": 2}]}) == {}
+
+
+def test_page_formulas_collects_display_and_inline():
+    blocks = [
+        {"type": "prose", "target": "so $x^2$ and $y$"},
+        {"type": "math", "latex": "a=b"},
+        {"type": "list", "items": [{"target": "$z$"}]},
+        {"type": "figure", "caption": "no math here"},
+    ]
+    assert verify.page_formulas(blocks) == ["x^2", "y", "a=b", "z"]
+
+
+class _CountingInline:
+    def __init__(self):
+        self.calls = 0
+
+    def vision(self, *a, **k):
+        self.calls += 1
+        return '{"ok": true, "issues": []}'
+
+    def text(self, *a, **k):
+        return ""
+
+
+def test_verify_math_page_checks_inline_formulas(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = _CountingInline()
+    res = verify.verify_math_page(prov, img, [{"type": "prose", "target": "value $x^2$ here"}])
+    assert res["checked"] == 1 and prov.calls == 1
+
+
+def test_verify_math_page_skips_when_no_formulas(tmp_path):
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prov = _CountingInline()
+    res = verify.verify_math_page(prov, img, [{"type": "prose", "target": "plain text"}])
+    assert res["checked"] == 0 and prov.calls == 0

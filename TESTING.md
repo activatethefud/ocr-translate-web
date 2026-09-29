@@ -172,6 +172,21 @@ Each must have a named test:
 22. **Orphaned single jobs** — on startup, in-process `queued`/`running` single jobs
     are marked `failed` ("interrupted by server restart"); book chunks resume.
 
+## Broad testing across real documents
+
+`backend/tools/broad_test.py` runs the whole pipeline over a list of documents/pages and
+reports block types, figures, missing pages, tokens, cost and wall time:
+
+```bash
+export DS_KEY=...
+PYTHONPATH=backend python3 backend/tools/broad_test.py \
+  --case "~/Downloads/book.pdf:2-3:French:judge" \
+  --case "~/Downloads/scan.pdf:1-2:Chinese (Simplified):tight"
+```
+
+Good coverage: a text/math textbook, an English academic PDF, a page with lists/tables,
+a scanned book with figures, a landscape/handwritten notebook, a form, and a code doc.
+
 ## Coverage & CI
 
 - Target: **≥ 85%** line coverage on `ocrtran` (excluding CLI printing).

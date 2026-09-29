@@ -179,6 +179,7 @@ class EstimateOut(BaseModel):
     est_cost_usd: float
     est_cost_low: float | None = None
     est_cost_high: float | None = None
+    est_seconds: int | None = None
     breakdown: dict[str, float] = {}
     assumptions: dict = {}
 

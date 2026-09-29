@@ -52,6 +52,34 @@ def render_pages(
     return made
 
 
+def _border_ink(path: str | Path, band: int = 2) -> float:
+    """Fraction of dark pixels along the crop border (high = likely clipped)."""
+    try:
+        from PIL import Image
+
+        im = Image.open(path).convert("L")
+    except Exception:  # noqa: BLE001
+        return 0.0
+    w, h = im.size
+    px = im.load()
+    ink = tot = 0
+    for x in range(w):
+        for y in range(0, band):
+            tot += 1
+            ink += px[x, y] < 235
+        for y in range(h - band, h):
+            tot += 1
+            ink += px[x, y] < 235
+    for y in range(h):
+        for x in range(0, band):
+            tot += 1
+            ink += px[x, y] < 235
+        for x in range(w - band, w):
+            tot += 1
+            ink += px[x, y] < 235
+    return ink / max(1, tot)
+
+
 def render_figure(
     pdf: str | Path,
     page_no: int,
@@ -60,6 +88,7 @@ def render_figure(
     target_px: int = 1800,
     pad_frac: float = 0.06,
     min_pad_pt: float = 6.0,
+    auto_expand: bool = True,
 ) -> bool:
     """Crop a figure from the *source* PDF at high resolution.
 
@@ -68,19 +97,27 @@ def render_figure(
     little too tight don't clip the diagram. Cropping from the source (rather than
     the small OCR render) keeps figures sharp when the whole page is scaled up.
     """
+    if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+        return False  # degenerate box (padding would manufacture a crop)
     with fitz.open(pdf) as doc:
         page = doc[page_no - 1]
         w, h = page.rect.width, page.rect.height
-        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
-            return False  # degenerate box (padding would manufacture a crop)
-        x0, y0, x1, y1 = expand_bbox(bbox, pad_frac, min_pad_pt, w, h)
-        clip = fitz.Rect(x0 * w, y0 * h, x1 * w, y1 * h)
-        if clip.width <= 0 or clip.height <= 0:
-            return False
-        zoom = min(target_px / max(clip.width, clip.height), 24.0)
-        pix = page.get_pixmap(clip=clip, matrix=fitz.Matrix(zoom, zoom))
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        pix.save(str(out_path))
+        grow = pad_frac
+        extra_pt = min_pad_pt
+        for attempt in range(4):
+            x0, y0, x1, y1 = expand_bbox(bbox, grow, extra_pt, w, h)
+            clip = fitz.Rect(x0 * w, y0 * h, x1 * w, y1 * h)
+            if clip.width <= 0 or clip.height <= 0:
+                return False
+            zoom = min(target_px / max(clip.width, clip.height), 24.0)
+            pix = page.get_pixmap(clip=clip, matrix=fitz.Matrix(zoom, zoom))
+            pix.save(str(out_path))
+            # if ink still touches the border, the box is probably still too tight
+            if not auto_expand or _border_ink(out_path) < 0.06 or attempt == 3:
+                break
+            grow = min(0.6, grow * 2 + 0.06)
+            extra_pt = min(60.0, extra_pt * 2 + 6)
     return True
 
 
@@ -105,5 +142,5 @@ def page_ink_ratio(pdf: str | Path, page_no: int, dpi: int = 50) -> float:
         return sum(1 for b in data if b < 245) / len(data)
 
 
-def is_blank(pdf: str | Path, page_no: int, threshold: float = 0.002) -> bool:
+def is_blank(pdf: str | Path, page_no: int, threshold: float = 0.0003) -> bool:
     return page_ink_ratio(pdf, page_no) < threshold
