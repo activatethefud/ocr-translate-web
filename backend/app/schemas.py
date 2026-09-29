@@ -31,7 +31,7 @@ class JobCreate(BaseModel):
     figure_mode: Literal["off", "tight", "judge"] = "tight"
     max_scale: float = 0.0
     text_width: str = "16.5cm"
-    prompt_version: str = "1"
+    prompt_version: str = "2"
     glossary: list[GlossaryItem] = []
     do_not_translate: list[str] = []
     llm_instructions: str = ""
@@ -106,6 +106,13 @@ class BlockOut(BaseModel):
     latex: str = ""
     description: str = ""
     bbox: list[float] | None = None
+    level: int | None = None
+    ordered: bool | None = None
+    items: list[dict] | None = None
+    kind: str | None = None
+    name: str | None = None
+    caption: str | None = None
+    number: str | None = None
 
 
 class BlockPatch(BaseModel):

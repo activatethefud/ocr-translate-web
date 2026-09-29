@@ -51,6 +51,13 @@ export interface Block {
   latex: string;
   description: string;
   bbox?: number[] | null;
+  level?: number | null;
+  ordered?: boolean | null;
+  items?: { source?: string; target?: string }[] | null;
+  kind?: string | null;
+  name?: string | null;
+  caption?: string | null;
+  number?: string | null;
 }
 
 export interface Page {

@@ -26,7 +26,7 @@ class PipelineConfig:
     model: str = "deepseek-flash"
     timeout: int = 600
     max_tokens: int = 16000
-    prompt_version: str = "1"
+    prompt_version: str = "2"
 
     # --- input ---
     sources: list[str] = field(default_factory=list)

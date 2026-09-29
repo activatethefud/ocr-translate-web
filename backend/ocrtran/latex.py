@@ -98,6 +98,78 @@ def preamble(cfg: PipelineConfig) -> str:
 POSTAMBLE = "\\end{minipage}\n\\end{document}\n"
 
 
+_DELIMS = (("$$", "$"), ("\\(", "$"), ("\\)", "$"), ("\\[", "$"), ("\\]", "$"))
+_LIST_MARKER = re.compile(r"^\s*(?:\(?\d{1,2}[.)]|[ivxlcdm]{1,5}[.)]|[a-z][.)])\s+", re.IGNORECASE)
+
+
+def _normalize_math(s: str) -> str:
+    """Collapse display delimiters and stray markdown the model emits in prose."""
+    for a, b in _DELIMS:
+        s = s.replace(a, b)
+    s = s.replace("**", "")  # markdown bold has no meaning in LaTeX
+    return s
+
+
+def text_to_tex(s: str) -> str:
+    """Escape text and turn blank-line-separated paragraphs into LaTeX paragraphs."""
+    s = _normalize_math(s or "")
+    paras = [p.strip() for p in re.split(r"\n\s*\n", s.strip()) if p.strip()]
+    return "\n\n".join(esc_text(p.replace("\n", " ")) for p in paras)
+
+
+_HEADING_CMDS = {1: "\\subsection*", 2: "\\subsubsection*", 3: "\\paragraph*"}
+
+
+def _block_tex(b: dict, fig_names: dict) -> str | None:
+    """Render one structured block to LaTeX (lists/headings/quotes/theorems/…)."""
+    t = b.get("type")
+    textsrc = b.get("target") or b.get("source") or ""
+    if t == "heading":
+        cmd = _HEADING_CMDS.get(int(b.get("level") or 2), "\\subsubsection*")
+        return cmd + "{" + text_to_tex(textsrc) + "}"
+    if t == "prose":
+        return text_to_tex(textsrc)
+    if t == "quote":
+        return "\\begin{quote}\n" + text_to_tex(textsrc) + "\n\\end{quote}"
+    if t == "theorem":
+        kind = esc_text(str(b.get("kind") or "Theorem").strip())
+        name = str(b.get("name") or "").strip()
+        head = f"\\textbf{{{kind}" + (f" ({esc_text(name)})" if name else "") + ".}"
+        return "\\begin{quote}\n" + head + " " + text_to_tex(textsrc) + "\n\\end{quote}"
+    if t == "list":
+        ordered = bool(b.get("ordered"))
+        env = "enumerate" if ordered else "itemize"
+        lines = []
+        for item in b.get("items") or []:
+            txt = item.get("target") or item.get("source") or ""
+            if ordered:
+                # the model often keeps "1)" / "ii." inside the item; strip it so we
+                # don't end up with double numbering
+                txt = _LIST_MARKER.sub("", _normalize_math(txt), count=1)
+            lines.append("  \\item " + text_to_tex(txt))
+        if not lines:
+            return None
+        return f"\\begin{{{env}}}\n" + "\n".join(lines) + f"\n\\end{{{env}}}"
+    if t in ("math", "table"):
+        w = wrap_math(b.get("latex", ""))
+        if not w:
+            return None
+        number = str(b.get("number") or "").strip()
+        if t == "math" and number and w.endswith("\\]"):
+            w = w[:-2] + " \\qquad \\text{" + esc_text(number) + "} \\]"
+        return w
+    if t == "figure" and id(b) in fig_names:
+        name, frac = fig_names[id(b)]
+        width = min(0.92, max(0.30, frac * 1.25))
+        inner = f"\\includegraphics[width={width:.2f}\\textwidth]{{{name}}}"
+        caption = str(b.get("caption") or "").strip()
+        if caption:
+            inner += "\\\\[2pt]\\small " + text_to_tex(caption)
+        return "\\begin{center}" + inner + "\\end{center}"
+    # unknown type: treat like prose (backwards compatible)
+    return text_to_tex(textsrc) if textsrc else None
+
+
 def build_tex(
     cfg: PipelineConfig,
     base: str,
@@ -131,20 +203,9 @@ def build_tex(
 
     body: list[str] = []
     for b in blocks:
-        t = b.get("type")
-        if t in ("heading", "prose"):
-            txt = b.get("target") or b.get("source") or ""
-            body.append("\\subsection*{" + esc_text(txt) + "}" if t == "heading" else esc_text(txt))
-        elif t in ("math", "table"):
-            w = wrap_math(b.get("latex", ""))
-            if w:
-                body.append(w)
-        elif t == "figure" and id(b) in fig_names:
-            name, frac = fig_names[id(b)]
-            width = min(0.92, max(0.30, frac * 1.25))
-            body.append(
-                f"\\begin{{center}}\\includegraphics[width={width:.2f}\\textwidth]{{{name}}}\\end{{center}}"
-            )
+        rendered = _block_tex(b, fig_names)
+        if rendered:
+            body.append(rendered)
     return preamble(cfg) + "\n\n".join(body) + "\n" + POSTAMBLE
 
 

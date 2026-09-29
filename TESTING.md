@@ -159,6 +159,10 @@ Each must have a named test:
     `pages`/`unprocessed`, and page-size checks compare against the *set* of source
     sizes (sources can mix letter + A4), not just page 1. (These caused false
     `page_count`/`page_size` warnings on real documents.)
+23. **Richer structure renders correctly** — lists stay lists (never one line),
+    heading levels, theorem/quote environments, numbered math, figure captions.
+    Normalise `$$…$$`/`\(…\)` before escaping and strip markdown `**` and ordered-item
+    markers (double numbering).
 22. **Orphaned single jobs** — on startup, in-process `queued`/`running` single jobs
     are marked `failed` ("interrupted by server restart"); book chunks resume.
 

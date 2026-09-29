@@ -61,3 +61,6 @@ table.chunks { width: 100%; border-collapse: collapse; margin-top: 8px; font-siz
 table.chunks th, table.chunks td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .cost-breakdown { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; font-size: 12px; }
 .cost-breakdown span { background: #0e1116; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+.block-list { margin: 6px 0 0 18px; padding: 0; }
+.block-list.ordered { list-style: decimal; }
+.block-list:not(.ordered) { list-style: disc; }

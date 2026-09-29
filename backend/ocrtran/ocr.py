@@ -19,23 +19,33 @@ Transcribe this page (written in __SRC__) and translate its natural language int
 Return STRICT JSON (no markdown fences):
 {
  "blocks": [
-   {"type":"heading"|"prose"|"math"|"table"|"figure",
-    "source":"...",        // heading/prose: exact __SRC__ text, inline math in $...$
-    "target":"...",        // heading/prose: __TGT__ translation, inline $...$ unchanged
-    "latex":"...",         // math: exact LaTeX; table: complete LaTeX array/tabular
-    "description":"...",   // figure: what it shows
-    "bbox":[x0,y0,x1,y1]   // figure: tight box as fractions of the page (0..1)
-   }
+   {"type":"heading","level":1,"source":"...","target":"..."},
+   {"type":"prose","source":"...","target":"..."},
+   {"type":"list","ordered":true,"items":[{"source":"...","target":"..."}]},
+   {"type":"math","latex":"...","number":"(1)"},
+   {"type":"table","latex":"..."},
+   {"type":"figure","description":"...","bbox":[x0,y0,x1,y1],"caption":"..."},
+   {"type":"quote","source":"...","target":"..."},
+   {"type":"theorem","kind":"Theorem","name":"...","source":"...","target":"..."}
  ]
 }
 Rules:
 - Preserve reading order top to bottom.
+- Use "list" for EVERY bulleted or numbered list. Put each item in its own "items"
+  entry. NEVER merge a list into one prose block or one line. Set "ordered" true for
+  numbered lists.
+- In "prose", separate distinct paragraphs with a blank line (\n\n); never merge
+  separate paragraphs into one.
+- "heading": set "level" (1 = document/chapter title, 2 = section, 3 = subsection).
+- "math": standalone/display equations; set "number" (e.g. "(1)") only if numbered.
+- "theorem": use for theorem/definition/example/proof/lemma/proposition/remark
+  environments; set "kind" and, when named, "name".
 - NEVER translate or alter mathematics; keep every symbol identical.
 - Reproduce every formula exactly: fractions, roots, exponents, subscripts,
   matrices, set notation, vectors. Use standard amsmath.
 - Keep inline math inside $...$ in both "source" and "target".
 - For tables output a complete \\begin{array}...\\end{array}.
-- For figures give an accurate tight "bbox".
+- For figures give an accurate tight "bbox" and, if present, a "caption".
 - Return only the JSON.
 """
 

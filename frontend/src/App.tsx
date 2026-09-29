@@ -610,9 +610,20 @@ function BlockRow(props: {
         <button className="ghost" disabled={first} onClick={() => onMove(-1)}>↑</button>
         <button className="ghost" disabled={last} onClick={() => onMove(1)}>↓</button>
       </div>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} />
-      <button className="ghost" onClick={() => onSave(text)}>Save</button>
+      {block.type === "list" && block.items ? (
+        <ol className={block.ordered ? "block-list ordered" : "block-list"}>
+          {block.items.map((it, i) => (
+            <li key={i}>{it.target || it.source || ""}</li>
+          ))}
+        </ol>
+      ) : (
+        <>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} />
+          <button className="ghost" onClick={() => onSave(text)}>Save</button>
+        </>
+      )}
       {block.latex && <code className="muted">{block.latex.slice(0, 120)}</code>}
+      {block.caption && <code className="muted">{block.caption}</code>}
     </div>
   );
 }

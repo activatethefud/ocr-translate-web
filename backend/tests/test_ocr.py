@@ -113,3 +113,10 @@ def test_figure_mode_judge_adds_a_call(tmp_path):
     res = ocr_image(prov, img, "S", "F", figure_mode="judge")
     assert res["tight"] == [[0.0, 0.0, 0.3, 0.3]]  # judge failed -> candidate kept
     assert prov.calls.count("vision") == 3
+
+
+def test_prompt_asks_for_rich_structure():
+    from ocrtran.ocr import OCR_PROMPT
+
+    for token in ("list", "items", "ordered", "theorem", "heading", "level", "quote", "caption"):
+        assert token in OCR_PROMPT

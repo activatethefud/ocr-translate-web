@@ -3,6 +3,25 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: richer vision schema for faithful recreation
+
+- **OCR prompt v2** (`prompt_version` default now "2", so old caches are not reused):
+  blocks can be `heading` (with `level`), `prose` (paragraph breaks via blank lines),
+  `list` (`ordered` + `items[]` — each item its own entry), `math` (optional `number`),
+  `table`, `figure` (bbox + `caption`), `quote`, and `theorem` (`kind` + `name`).
+  Explicitly: "use list for every list; never merge items into one line".
+- **Renderer** (`ocrtran/latex.py`, `_block_tex` + `text_to_tex`):
+  headings -> subsection/subsubsection/paragraph by level; lists -> itemize/enumerate;
+  quotes -> quote env; theorems -> **kind (name).** in a quote; numbered math appends
+  `\text{(n)}`; figures get captions. `text_to_tex` splits paragraphs on blank lines.
+- **Robustness fixes found by a real run**: collapse `$$…$$` / `\(…\)` / `\[…\]`
+  to `$…$` before escaping (they were being escaped, mangling formulas); strip markdown
+  `**`; strip leading "1)" / "ii." from ordered items (double numbering).
+- Review UI shows list items as a real list.
+- Tests: structure (+19 launcher/rendering) — see count above.
+
+---
+
 ## Session: public mode (BYOK-only) + self-learning cost model
 
 - **Public mode**: `APP_MODE=public` (or `team`) → the server never falls back to
