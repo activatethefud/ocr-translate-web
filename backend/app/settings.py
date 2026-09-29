@@ -33,12 +33,23 @@ class Settings:
     max_pages: int = 1000
     max_job_usd: float = 2.0
     max_book_usd: float = 5.0
+    max_daily_usd: float = 1.0
+    app_mode: str = "local"  # local | team | public
+    job_cooldown_seconds: int = 5
+    max_active_jobs_per_session: int = 1
+    max_jobs_per_hour: int = 10
+    max_uploads_per_hour: int = 20
+    dedupe_window: int = 60
     book_chunk_size: int = 25
     book_chunk_concurrency: int = 2
     rolling_glossary: bool = True
     worker_concurrency: int = 3
     page_concurrency: int = 4
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173"])
+
+    @property
+    def limits_enabled(self) -> bool:
+        return self.app_mode != "local"
 
     @property
     def docs_dir(self) -> Path:
@@ -71,6 +82,13 @@ def load_settings() -> Settings:
         max_pages=_int("MAX_PAGES", 1000),
         max_job_usd=_float("MAX_JOB_USD", 2.0),
         max_book_usd=_float("MAX_BOOK_USD", 5.0),
+        max_daily_usd=_float("MAX_DAILY_USD", 1.0),
+        app_mode=os.environ.get("APP_MODE", "local"),
+        job_cooldown_seconds=_int("JOB_COOLDOWN_SECONDS", 5),
+        max_active_jobs_per_session=_int("MAX_ACTIVE_JOBS_PER_SESSION", 1),
+        max_jobs_per_hour=_int("MAX_JOBS_PER_HOUR", 10),
+        max_uploads_per_hour=_int("MAX_UPLOADS_PER_HOUR", 20),
+        dedupe_window=_int("DEDUPE_WINDOW", 60),
         book_chunk_size=_int("BOOK_CHUNK_SIZE", 25),
         book_chunk_concurrency=_int("BOOK_CHUNK_CONCURRENCY", 2),
         rolling_glossary=os.environ.get("ROLLING_GLOSSARY", "1") not in ("0", "false", "no"),

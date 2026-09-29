@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import fields
 from pathlib import Path
 
 from ocrtran import Pipeline, PipelineConfig
@@ -16,6 +17,8 @@ from . import db, storage
 from .settings import Settings
 
 log = logging.getLogger("app.runner")
+
+_ENGINE_KEYS = {f.name for f in fields(PipelineConfig)}
 
 _FONT_HINTS = {
     "chinese": ("Noto Sans CJK SC", "zh"),
@@ -89,7 +92,7 @@ class JobRunner:
 
     # -- config --------------------------------------------------------
     def config_for(self, job_row: dict, doc_id: str, job_id: str) -> PipelineConfig:
-        data = {k: v for k, v in job_row.items() if v is not None}
+        data = {k: v for k, v in job_row.items() if v is not None and k in _ENGINE_KEYS}
         font = data.pop("font_main", None)
         loc = data.pop("linebreak_locale", None)
         if not font:

@@ -23,7 +23,7 @@ from ocrtran.cache import load_json, save_json
 from ocrtran.pages import PageSpecError, parse_page_spec
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
-from . import books, db, storage
+from . import books, db, guards, storage
 from .runner import JobRunner
 from .schemas import (
     BlockOut,
@@ -422,6 +422,13 @@ def create_job(
             stem = Path(doc.filename).stem or "output"
             requested = f"{stem} ({body.target_lang})"
         cfg["output_name"] = requested
+        cfg["session_id"] = sid
+        if settings.limits_enabled:
+            dup = guards.find_duplicate(s, sid, doc.sha256, cfg, settings.dedupe_window)
+            if dup is not None:
+                return _job_out(s, dup)  # idempotent: same request within the window
+        guards.enforce_submit(s, settings, sid)
+        cfg["_fingerprint"] = f"{doc.sha256[:16]}:{guards.config_fingerprint(cfg)}"
         try:
             selected = parse_page_spec(body.pages, doc.n_pages)
         except PageSpecError as exc:
@@ -760,6 +767,7 @@ def create_book_endpoint(
         cfg["output_name"] = (
             body.output_name or ""
         ).strip() or f"{Path(doc.filename).stem} ({body.target_lang})"
+        guards.enforce_submit(s, settings, sid)
         book = books.create_book(
             s,
             settings,
