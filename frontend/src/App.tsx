@@ -130,7 +130,7 @@ export function App() {
   const [outputPageSize, setOutputPageSize] = useState<"match" | "a4" | "letter">("match");
   const [scaleMode, setScaleMode] = useState<"fill" | "fit">("fill");
   const [pageConcurrency, setPageConcurrency] = useState(4);
-  const [figureMode, setFigureMode] = useState<"off" | "tight" | "judge">("tight");
+  const [figureMode, setFigureMode] = useState<"off" | "tight" | "judge">("judge");
   const [outputName, setOutputName] = useState("");
   const [bookMode, setBookMode] = useState(false);
   const [chunkSize, setChunkSize] = useState(25);

@@ -28,7 +28,7 @@ class JobCreate(BaseModel):
     max_px: int = 1800
     figure_px: int = 1800
     figure_pad: float = 0.06
-    figure_mode: Literal["off", "tight", "judge"] = "tight"
+    figure_mode: Literal["off", "tight", "judge"] = "judge"  # app default: best figures
     max_scale: float = 0.0
     text_width: str = "16.5cm"
     prompt_version: str = "2"

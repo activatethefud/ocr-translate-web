@@ -51,3 +51,30 @@ def expand_bbox(
         min(bx1, x1 + pad_x),
         min(by1, y1 + pad_y),
     ]
+
+
+def _area(b) -> float:
+    return max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+
+
+def is_near_full_page(bbox, threshold: float = 0.85) -> bool:
+    """True if the box covers (almost) the whole page - usually a model mistake."""
+    return bool(bbox) and _area(bbox) >= threshold
+
+
+def choose_box(tight=None, main=None, full_page: float = 0.85):
+    """Pick the best figure box: the tight box when usable, else the main-call box.
+
+    A loose main box that covers the whole page is ignored rather than unioned in
+    (that used to turn every figure crop into the full page).
+    """
+    tight_ok = tight and tight[2] > tight[0] and tight[3] > tight[1]
+    main_ok = main and main[2] > main[0] and main[3] > main[1]
+    if tight_ok and not is_near_full_page(tight, full_page):
+        return list(tight)
+    if main_ok and not is_near_full_page(main, full_page):
+        return list(main)
+    # both absent or both suspicious: use whatever exists rather than dropping it
+    if tight_ok:
+        return list(tight)
+    return list(main) if main_ok else None

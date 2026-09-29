@@ -49,3 +49,28 @@ def test_expand_never_shrinks():
 def test_expand_normalises_inverted_box():
     box = expand_bbox([0.8, 0.8, 0.2, 0.2], pad_frac=0.0, min_pad_pt=0)
     assert box == [0.2, 0.2, 0.8, 0.8]
+
+
+def test_choose_box_prefers_tight():
+    from ocrtran.geometry import choose_box
+
+    assert choose_box([0.2, 0.2, 0.5, 0.5], [0.0, 0.0, 1.0, 1.0]) == [0.2, 0.2, 0.5, 0.5]
+
+
+def test_choose_box_uses_main_when_no_tight():
+    from ocrtran.geometry import choose_box
+
+    assert choose_box(None, [0.1, 0.1, 0.5, 0.5]) == [0.1, 0.1, 0.5, 0.5]
+
+
+def test_choose_box_falls_back_to_tight_when_all_suspicious():
+    from ocrtran.geometry import choose_box
+
+    # both boxes are near-full; prefer the tighter one rather than dropping it
+    assert choose_box([0.0, 0.0, 0.95, 0.95], [0.0, 0.0, 1.0, 1.0]) == [0.0, 0.0, 0.95, 0.95]
+
+
+def test_choose_box_none_when_nothing():
+    from ocrtran.geometry import choose_box
+
+    assert choose_box(None, None) is None

@@ -112,7 +112,8 @@ def test_figure_mode_judge_adds_a_call(tmp_path):
     prov = FakeProvider(blocks=_fig_blocks(), tight=[[0.0, 0.0, 0.3, 0.3]])
     res = ocr_image(prov, img, "S", "F", figure_mode="judge")
     assert res["tight"] == [[0.0, 0.0, 0.3, 0.3]]  # judge failed -> candidate kept
-    assert prov.calls.count("vision") == 3
+    # main + tight bbox + independent detect + judge
+    assert prov.calls.count("vision") == 4
 
 
 def test_prompt_asks_for_rich_structure():

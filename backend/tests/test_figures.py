@@ -58,16 +58,16 @@ def test_render_figure_degenerate_box(tmp_path):
     assert render.render_figure(pdf, 1, [0.5, 0.5, 0.5, 0.5], tmp_path / "x.png") is False
 
 
-def test_build_tex_uses_union_of_boxes(tiny_pdf, tmp_path):
+def test_build_tex_prefers_tight_box(tiny_pdf, tmp_path):
     cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"), figure_pad=0.0)
     entry = {
         "page": 1,
-        # main box is much wider than the tight box -> union width 0.6 -> width 0.75
+        # a loose main box must NOT be unioned in; the tight box wins
         "blocks": [{"type": "figure", "bbox": [0.1, 0.1, 0.7, 0.4]}],
         "tight": [[0.2, 0.2, 0.3, 0.3]],
     }
     tex = latex.build_tex(cfg, tiny_pdf.stem, str(tiny_pdf), entry)
-    assert "0.75\\textwidth" in tex
+    assert "0.30\\textwidth" in tex
 
 
 def test_build_tex_creates_figure_file(tiny_pdf, tmp_path):

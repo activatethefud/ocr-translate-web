@@ -3,6 +3,32 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: precise figure detection (grid + independent detect + LLM judge)
+
+- **`ocrtran/figures.py`** reworked:
+  - `grid_variant()` draws a labeled 10% coordinate grid on the page before bbox/detect
+    calls -> the model localises far more precisely.
+  - `detect_figures()` = an **independent detection pass** (finds figures even when the
+    main OCR call found none, and figures without captions).
+  - `boxes_variant()` draws the candidate boxes (numbered) and `refine_figures()` is an
+    LLM **judge** that sees them: corrects boxes, sets `keep=false` for false positives,
+    and can add missed figures.
+  - `refine_page()` merges candidate + detections (IoU) + judge, **monotonic** (boxes
+    only grow). `iou()`, `choose_box()`.
+- **Bug found on the real doc** (`Preseci prizme i piramide`, 22-page scan): the main
+  call's figure box was sometimes the **whole page**, and unioning it with the tight box
+  made every crop the full page (all 1273x1800). `geometry.choose_box()` now prefers the
+  tight box and ignores a near-full-page main box.
+- **Verified on pages 1-2 of that scan**: `tight` found 2 figures and gave real sub-crops;
+  `judge` found **3** (it caught a page-2 figure `tight` missed) and expanded boxes to
+  include labels/captions.
+- App default `figure_mode` is now **judge** (best figures); `off`/`tight` remain for
+  speed. Judge adds a detect pass per page and a judge pass for figure pages.
+- Tests: **+18** (iou, grid/boxes variants, detect/refine parse, refine_page merge /
+  keep=false / union, choose_box).
+
+---
+
 ## Session: richer vision schema for faithful recreation
 
 - **OCR prompt v2** (`prompt_version` default now "2", so old caches are not reused):

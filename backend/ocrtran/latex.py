@@ -183,11 +183,12 @@ def build_tex(
     tight = entry.get("tight") or []
     fig_names: dict[int, tuple[str, float]] = {}
     for i, fig in enumerate(figs):
-        # take the union of the tight box and the main-call box (the latter is
-        # usually looser) so we don't clip the figure; render_figure pads a bit more.
+        # Prefer the dedicated tight box. The main-call box is sometimes the whole
+        # page (bad), and unioning with it made every crop the full page, so we only
+        # fall back to it when there is no tight box. render_figure still pads.
         main_bb = fig.get("bbox")
         tight_bb = tight[i] if i < len(tight) and tight[i] else None
-        bb = geometry.union_bbox(tight_bb, main_bb)
+        bb = geometry.choose_box(tight_bb, main_bb)
         if not bb:
             continue
         name = f"fig_{page}_{i}.png"

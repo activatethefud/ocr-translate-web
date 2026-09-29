@@ -159,6 +159,9 @@ Each must have a named test:
     `pages`/`unprocessed`, and page-size checks compare against the *set* of source
     sizes (sources can mix letter + A4), not just page 1. (These caused false
     `page_count`/`page_size` warnings on real documents.)
+24. **Figure detection precision** — prefer the tight box; never union a near-full-page
+    main box (it made crops the whole page). Independent detection catches figures the
+    main call missed; the judge can only expand boxes, never shrink.
 23. **Richer structure renders correctly** — lists stay lists (never one line),
     heading levels, theorem/quote environments, numbered math, figure captions.
     Normalise `$$…$$`/`\(…\)` before escaping and strip markdown `**` and ordered-item

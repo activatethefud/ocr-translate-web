@@ -104,16 +104,10 @@ def ocr_image(
         if bj and isinstance(bj.get("figures"), list):
             tight = [f.get("bbox") for f in bj["figures"] if f.get("bbox")]
 
-    if want_bbox and figs and figure_mode == "judge":
-        candidates = [
-            tight[i] if i < len(tight) and tight[i] else figs[i].get("bbox") for i in range(len(figs))
-        ]
-        judged = figures.judge_bboxes(
-            provider,
-            str(image_path),
-            [{"bbox": c, "description": figs[i].get("description", "")} for i, c in enumerate(candidates)],
-        )
-        tight = figures.apply_judge(candidates, judged)
+    if want_bbox and figure_mode == "judge":
+        # independent detection + LLM judge (runs even if the main call found no
+        # figures, so missed figures get added)
+        blocks, tight = figures.refine_page(provider, image_path, blocks, tight)
 
     return {"blocks": blocks, "tight": [b for b in tight if b]}
 
