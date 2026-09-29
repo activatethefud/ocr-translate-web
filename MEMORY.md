@@ -3,6 +3,31 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: diagnosis — "5 pages instead of 6" was a silent fail (fixed)
+
+- Repro: `OMM Skripta sredjeno.pdf`, `pages=10,15,20`, `unprocessed=skip`,
+  `interleave`, -> Chinese. Expected 6, got 5, status `done`, error None.
+- Cause: page 10 had a figure whose bbox came back as **pixels** `[50,180,950,720]`
+  (not 0..1), so the crop was rejected; `p10.pdf` was never built; the assembler
+  skipped the missing translation -> 5 pages. The **verify report flagged
+  `page_count 6->5`** and a `build/error` event existed, but the job stayed `done`
+  with no error: a silent fail.
+- Fixes:
+  1. `figures.sanitize_box()` + `sanitize_result()` normalize pixel/percent boxes
+     (using the rendered image size), clamp, reject degenerate; applied to fresh AND
+     **cached** results in `run_ocr`.
+  2. `latex.build_tex` only emits `\includegraphics` if the crop file exists; else it
+     keeps the figure **caption** so nothing is silently lost.
+  3. `verify.missing_pages()` + `runner`: a `done` job now sets `error` to
+     "pages not typeset: ..." when a selected page produced no PDF (and the report
+     lists them), so the UI surfaces it.
+  4. Bonus: figure **captions are translated** in the annotate pass.
+- Verified: re-running page 10 (from cache, $0) now sanitizes the pixel box
+  (`[0.057,0.1,1.0,0.4]`), writes `fig_10_0.png`, builds `p10.pdf` and renders the
+  Chinese translation + caption.
+
+---
+
 ## Session: precise figure detection (grid + independent detect + LLM judge)
 
 - **`ocrtran/figures.py`** reworked:

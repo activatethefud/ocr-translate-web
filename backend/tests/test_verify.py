@@ -190,3 +190,41 @@ def test_verify_math_calls_model_only_for_formulas(tmp_path):
     res = verify.verify_math_page(prov, img, [{"type": "math", "latex": "a=b"}])
     assert res["checked"] == 1
     assert prov.calls == 1
+
+
+@pytest.mark.integration
+def test_missing_pages_reports_unbuilt(tmp_path):
+    import fitz
+
+    from ocrtran import paths
+
+    src = tmp_path / "s.pdf"
+    d = fitz.open()
+    d.new_page(width=200, height=200)
+    d.new_page(width=200, height=200)
+    d.save(src)
+    d.close()
+    workdir = tmp_path / "w"
+    cfg = PipelineConfig(sources=[str(src)], workdir=str(workdir), pages="all", combine="interleave")
+    make_translated_page(paths.page_pdf(workdir, src.stem, 1))  # page 2 not built
+    miss = verify.missing_pages(cfg, {src.stem: [{"page": 1}, {"page": 2}]})
+    assert miss == {src.stem: [2]}
+
+
+@pytest.mark.integration
+def test_missing_pages_empty_when_all_built(tmp_path):
+    import fitz
+
+    from ocrtran import paths
+
+    src = tmp_path / "s.pdf"
+    d = fitz.open()
+    d.new_page(width=200, height=200)
+    d.new_page(width=200, height=200)
+    d.save(src)
+    d.close()
+    workdir = tmp_path / "w"
+    cfg = PipelineConfig(sources=[str(src)], workdir=str(workdir), pages="all")
+    for p in (1, 2):
+        make_translated_page(paths.page_pdf(workdir, src.stem, p))
+    assert verify.missing_pages(cfg, {src.stem: [{"page": 1}, {"page": 2}]}) == {}

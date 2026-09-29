@@ -96,13 +96,23 @@ def ocr_image(
     if obj is None:  # single retry, as empty responses happen
         obj = parse_json(provider.vision(image_path, prompt, max_tokens))
     blocks = (obj or {}).get("blocks", []) or []
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as _im:
+            img_w, img_h = _im.size
+    except Exception:  # noqa: BLE001 - not a decodable image
+        img_w = img_h = None
+    for b in blocks:
+        if b.get("type") == "figure" and b.get("bbox"):
+            b["bbox"] = figures.sanitize_box(b["bbox"], img_w, img_h)
     figs = [b for b in blocks if b.get("type") == "figure"]
     tight: list[list[float] | None] = []
 
     if want_bbox and figs and figure_mode in ("tight", "judge"):
         bj = parse_json(provider.vision(image_path, figures.BBOX_PROMPT, 3000))
         if bj and isinstance(bj.get("figures"), list):
-            tight = [f.get("bbox") for f in bj["figures"] if f.get("bbox")]
+            tight = [figures.sanitize_box(f["bbox"], img_w, img_h) for f in bj["figures"] if f.get("bbox")]
 
     if want_bbox and figure_mode == "judge":
         # independent detection + LLM judge (runs even if the main call found no
@@ -183,6 +193,7 @@ def run_ocr(
                         figure_mode=cfg.figure_mode,
                     )
                     cache.save_json(cpath, result)
+                figures.sanitize_result(result, img)
                 entry = {"page": pi, "img": str(img), **result}
             except Exception as exc:  # noqa: BLE001 - recorded per page
                 entry = {"page": pi, "img": str(img), "blocks": [], "tight": [], "error": str(exc)}

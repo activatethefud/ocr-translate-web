@@ -304,3 +304,44 @@ def refine_page(
             )
             tight.append(c["bbox"])
     return new_blocks, tight
+
+
+def sanitize_box(bb, img_w: float | None = None, img_h: float | None = None):
+    """Return a box clamped to 0..1, or ``None`` if it can't be made sensible.
+
+    Models occasionally return pixel coordinates (e.g. ``[50,180,950,720]``) or
+    percentages instead of fractions. Those are normalised here so we never build a
+    degenerate crop (which used to write a ``\\includegraphics`` for a missing file
+    and fail the whole page).
+    """
+    if not _valid_box(bb):
+        return None
+    x0, y0, x1, y1 = (min(bb[0], bb[2]), min(bb[1], bb[3]), max(bb[0], bb[2]), max(bb[1], bb[3]))
+    hi = max(x1, y1)
+    if hi <= 1.05:
+        pass  # already fractions
+    elif 1.05 < hi <= 100.5:
+        x0, y0, x1, y1 = x0 / 100, y0 / 100, x1 / 100, y1 / 100  # percentages
+    elif img_w and img_h:
+        x0, y0, x1, y1 = x0 / img_w, y0 / img_h, x1 / img_w, y1 / img_h  # pixels
+    else:
+        return None
+    x0, y0 = max(0.0, min(1.0, x0)), max(0.0, min(1.0, y0))
+    x1, y1 = max(0.0, min(1.0, x1)), max(0.0, min(1.0, y1))
+    if x1 - x0 < 0.02 or y1 - y0 < 0.02:
+        return None
+    return [x0, y0, x1, y1]
+
+
+def sanitize_result(result: dict, image_path) -> dict:
+    """Normalise all figure boxes in an OCR result (works for cached results too)."""
+    try:
+        with Image.open(image_path) as im:
+            w, h = im.size
+    except Exception:  # noqa: BLE001
+        w = h = None
+    for b in result.get("blocks", []):
+        if b.get("type") == "figure" and b.get("bbox"):
+            b["bbox"] = sanitize_box(b["bbox"], w, h)
+    result["tight"] = [sanitize_box(b, w, h) for b in (result.get("tight") or [])]
+    return result

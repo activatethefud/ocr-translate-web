@@ -10,8 +10,10 @@ from pathlib import Path
 
 import fitz
 
+from . import paths
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
+from .pages import parse_page_spec
 from .providers import Provider
 
 WORD_RE = re.compile(r"[A-Za-z\u00C0-\u024F\u0400-\u04FF]{4,}")
@@ -180,6 +182,22 @@ def verify_output(cfg: PipelineConfig, source_pdf: str, output_pdf: str | Path) 
     return issues
 
 
+def missing_pages(cfg: PipelineConfig, results: dict[str, list[dict]]) -> dict[str, list[int]]:
+    """Selected pages whose translated PDF was never produced (build failed)."""
+    srcmap = {Path(s).stem: s for s in cfg.resolve_sources()}
+    out: dict[str, list[int]] = {}
+    for base in results:
+        src = srcmap.get(base)
+        if not src:
+            continue
+        with fitz.open(src) as doc:
+            n = doc.page_count
+        miss = [p for p in parse_page_spec(cfg.pages, n) if not paths.page_pdf(cfg.workdir, base, p).exists()]
+        if miss:
+            out[base] = miss
+    return out
+
+
 def run_verify(cfg: PipelineConfig, results: dict[str, list[dict]], outputs: dict[str, Path]) -> dict:
     report: dict[str, dict] = {}
     for base, outpath in outputs.items():
@@ -189,5 +207,10 @@ def run_verify(cfg: PipelineConfig, results: dict[str, list[dict]], outputs: dic
             issues += verify_output(cfg, source, outpath)
         issues += [i for i in verify_ocr({base: results.get(base, [])})]
         math = [{"page": e["page"], **e["math_check"]} for e in results.get(base, []) if e.get("math_check")]
-        report[base] = {"output": str(outpath), "issues": issues, "math": math}
+        report[base] = {
+            "output": str(outpath),
+            "issues": issues,
+            "math": math,
+            "missing_pages": missing_pages(cfg, {base: results.get(base, [])}).get(base, []),
+        }
     return report

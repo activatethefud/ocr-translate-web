@@ -67,3 +67,14 @@ def test_annotate_batches_all_blocks_into_one_call():
     n = annotate_blocks(prov, blocks, "French")
     assert n == 2
     assert prov.text_calls == 1  # one batch for the whole page
+
+
+def test_annotate_translates_figure_caption():
+    blocks = [{"type": "figure", "caption": "Slika 1.2: Ciklus izrade modela"}]
+    n = annotate_blocks(_CountingProvider(), blocks, "Chinese")
+    assert n == 1  # caption was translated (identity provider keeps the text)
+
+
+def test_annotate_skips_empty_caption():
+    blocks = [{"type": "figure", "caption": ""}]
+    assert annotate_blocks(_CountingProvider(), blocks, "Chinese") == 0

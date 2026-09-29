@@ -142,3 +142,32 @@ def test_unordered_list_keeps_marker_like_text():
 def test_markdown_bold_stripped():
     out = text_to_tex("**important result** here")
     assert "**" not in out and "important result" in out
+
+
+def test_figure_without_crop_keeps_caption():
+    block = {"type": "figure", "bbox": [0.1, 0.1, 0.4, 0.4], "caption": "Slika 1.2"}
+    tex = _block_tex(block, {id(block): (None, 0.3)})
+    assert "includegraphics" not in tex and "Slika 1.2" in tex
+
+
+def test_figure_without_crop_or_caption_is_skipped():
+    block = {"type": "figure", "bbox": [0.1, 0.1, 0.4, 0.4]}
+    assert _block_tex(block, {id(block): (None, 0.3)}) is None
+
+
+def test_build_tex_missing_crop_keeps_caption(tiny_pdf, tmp_path, monkeypatch):
+    from ocrtran import render as render_mod
+
+    monkeypatch.setattr(render_mod, "render_figure", lambda *a, **k: False)  # crop fails
+    from ocrtran.config import PipelineConfig
+
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"))
+    entry = {
+        "page": 1,
+        "tight": [],
+        "blocks": [
+            {"type": "figure", "bbox": [0.1, 0.1, 0.4, 0.4], "caption": "Fig X"},
+        ],
+    }
+    tex = build_tex(cfg, tiny_pdf.stem, str(tiny_pdf), entry)
+    assert "includegraphics" not in tex and "Fig X" in tex

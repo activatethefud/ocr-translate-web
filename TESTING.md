@@ -159,6 +159,9 @@ Each must have a named test:
     `pages`/`unprocessed`, and page-size checks compare against the *set* of source
     sizes (sources can mix letter + A4), not just page 1. (These caused false
     `page_count`/`page_size` warnings on real documents.)
+25. **Silent build fails** — a figure box that isn't 0..1 (pixels/percent) must be
+    normalised or rejected; a failed crop must not emit a broken `\includegraphics`;
+    a `done` job with an unbuilt selected page must set `error` (else it looks silent).
 24. **Figure detection precision** — prefer the tight box; never union a near-full-page
     main box (it made crops the whole page). Independent detection catches figures the
     main call missed; the judge can only expand boxes, never shrink.

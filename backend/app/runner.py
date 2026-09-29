@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import fields
 from pathlib import Path
 
-from ocrtran import Pipeline, PipelineConfig
+from ocrtran import Pipeline, PipelineConfig, verify
 from ocrtran.cache import save_json
 from ocrtran.events import CancelToken, Event
 from ocrtran.pricing import cost_usd
@@ -190,6 +190,11 @@ class JobRunner:
                 s.commit()
             finally:
                 s.close()
+            missing = verify.missing_pages(cfg, result.ocr)
+            warn = None
+            if missing:
+                warn = "pages not typeset: " + ", ".join(f"{b} {ms}" for b, ms in missing.items())
+                self._record(job_id, Event("build", "error", message=warn))
             try:
                 rdir = storage.artifact_dir(self.settings, job_id)
                 rdir.mkdir(parents=True, exist_ok=True)

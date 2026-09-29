@@ -112,3 +112,32 @@ def test_refine_page_empty(tmp_path):
     blocks = [{"type": "prose", "target": "hi"}]
     out, tight = refine_page(_FigProvider(), _img(tmp_path), blocks, [])
     assert out == blocks and tight == []
+
+
+def test_sanitize_box_fractions_passthrough():
+    from ocrtran.figures import sanitize_box
+
+    assert sanitize_box([0.1, 0.2, 0.5, 0.6]) == [0.1, 0.2, 0.5, 0.6]
+
+
+def test_sanitize_box_percentages():
+    from ocrtran.figures import sanitize_box
+
+    assert sanitize_box([10, 20, 50, 60]) == [0.1, 0.2, 0.5, 0.6]
+
+
+def test_sanitize_box_pixels_need_image_size():
+    from ocrtran.figures import sanitize_box
+
+    box = sanitize_box([50, 180, 950, 720], 1272, 1800)
+    assert box == pytest.approx([50 / 1272, 0.1, 950 / 1272, 0.4])
+    # pixels without a reference size -> reject rather than build a broken crop
+    assert sanitize_box([50, 180, 950, 720]) is None
+
+
+def test_sanitize_box_rejects_degenerate():
+    from ocrtran.figures import sanitize_box
+
+    assert sanitize_box([0.5, 0.5, 0.5, 0.5]) is None
+    assert sanitize_box(None) is None
+    assert sanitize_box([0.1, 0.1, 0.1, 0.5]) is None

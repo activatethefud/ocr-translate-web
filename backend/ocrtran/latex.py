@@ -158,14 +158,19 @@ def _block_tex(b: dict, fig_names: dict) -> str | None:
         if t == "math" and number and w.endswith("\\]"):
             w = w[:-2] + " \\qquad \\text{" + esc_text(number) + "} \\]"
         return w
-    if t == "figure" and id(b) in fig_names:
-        name, frac = fig_names[id(b)]
-        width = min(0.92, max(0.30, frac * 1.25))
-        inner = f"\\includegraphics[width={width:.2f}\\textwidth]{{{name}}}"
+    if t == "figure":
+        entry = fig_names.get(id(b))
         caption = str(b.get("caption") or "").strip()
-        if caption:
-            inner += "\\\\[2pt]\\small " + text_to_tex(caption)
-        return "\\begin{center}" + inner + "\\end{center}"
+        name = entry[0] if entry else None
+        if name:
+            width = min(0.92, max(0.30, entry[1] * 1.25))
+            inner = f"\\includegraphics[width={width:.2f}\\textwidth]{{{name}}}"
+            if caption:
+                inner += "\\\\[2pt]\\small " + text_to_tex(caption)
+            return "\\begin{center}" + inner + "\\end{center}"
+        if caption:  # crop failed -> keep the caption so nothing is lost silently
+            return "\\begin{center}\\small \\textit{" + text_to_tex(caption) + "}\\end{center}"
+        return None
     # unknown type: treat like prose (backwards compatible)
     return text_to_tex(textsrc) if textsrc else None
 
@@ -192,15 +197,11 @@ def build_tex(
         if not bb:
             continue
         name = f"fig_{page}_{i}.png"
-        render.render_figure(
-            source_pdf,
-            page,
-            bb,
-            paths.figure_path(cfg.workdir, base, page, i),
-            cfg.figure_px,
-            pad_frac=cfg.figure_pad,
-        )
-        fig_names[id(fig)] = (name, max(0.05, float(bb[2]) - float(bb[0])))
+        dest = paths.figure_path(cfg.workdir, base, page, i)
+        ok = render.render_figure(source_pdf, page, bb, dest, cfg.figure_px, pad_frac=cfg.figure_pad)
+        frac = max(0.05, float(bb[2]) - float(bb[0]))
+        # if the crop could not be written, keep the caption but no \includegraphics
+        fig_names[id(fig)] = (name, frac) if (ok and dest.exists()) else (None, frac)
 
     body: list[str] = []
     for b in blocks:

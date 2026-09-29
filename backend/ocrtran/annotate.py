@@ -110,23 +110,28 @@ def _translate_one(provider: Provider, item: str, target_lang: str) -> str:
 
 
 def annotate_blocks(provider: Provider, blocks: list[dict], target_lang: str) -> int:
-    """Translate in-math annotations across a page's blocks in place. Returns count.
+    """Translate in-math annotations and figure captions in place. Returns count.
 
-    All annotation strings on the page are translated in **one** batch call (rather
-    than one call per block) to cut latency, with a per-item fallback on mismatch.
+    All strings on the page are translated in **one** batch call, with a per-item
+    fallback on mismatch.
     """
     work: list[tuple[dict, str, list]] = []
+    caps: list[dict] = []
     for b in blocks:
-        if b.get("type") not in ("math", "table"):
-            continue
-        lx = b.get("latex", "")
-        groups = [g for g in find_text_groups(lx) if is_source_text(g[2])]
-        if groups:
-            work.append((b, lx, groups))
-    if not work:
+        t = b.get("type")
+        if t in ("math", "table"):
+            lx = b.get("latex", "")
+            groups = [g for g in find_text_groups(lx) if is_source_text(g[2])]
+            if groups:
+                work.append((b, lx, groups))
+        elif t == "figure":
+            cap = (b.get("caption") or "").strip()
+            if cap and is_source_text(cap):
+                caps.append(b)
+    if not work and not caps:
         return 0
 
-    items = [g[2] for _, _, groups in work for g in groups]
+    items = [g[2] for _, _, groups in work for g in groups] + [b["caption"].strip() for b in caps]
     tr = _translate_batch(provider, items, target_lang)
     if len(tr) != len(items):
         tr = [_translate_one(provider, it, target_lang) for it in items]
@@ -138,7 +143,10 @@ def annotate_blocks(provider: Provider, blocks: list[dict], target_lang: str) ->
         for (a, z, _), zh in sorted(zip(groups, replacements, strict=False), key=lambda x: -x[0][0]):
             lx = lx[:a] + "\\text{" + zh + "}" + lx[z:]
         b["latex"] = lx
-    return len(work)
+    for b in caps:
+        b["caption"] = tr[cursor]
+        cursor += 1
+    return len(work) + len(caps)
 
 
 def run_annotate(
