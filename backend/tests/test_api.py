@@ -239,3 +239,26 @@ def test_book_pause_resume_and_status(client, tiny_pdf, xelatex_available):
     chunks = client.get(f"/api/jobs/{job_id}/chunks").json()
     r = client.post(f"/api/jobs/{job_id}/chunks/{chunks[0]['id']}/retry")
     assert r.status_code == 200
+
+
+def test_estimate_breakdown_and_options(client, tiny_pdf):
+    doc = _upload(client, tiny_pdf).json()
+    base = client.get(f"/api/documents/{doc['id']}/estimate?model=deepseek-flash").json()
+    assert base["pages"] == 2
+    assert base["est_cost_usd"] > 0
+    assert "ocr_translation" in base["breakdown"]
+    assert base["est_cost_low"] <= base["est_cost_usd"] <= base["est_cost_high"]
+    assert base["assumptions"]["image_tokens_per_page"] > 0
+
+    # options that add calls/tokens must raise the estimate
+    richer = client.get(
+        f"/api/documents/{doc['id']}/estimate?model=deepseek-flash"
+        "&verify_math=true&figure_mode=judge&glossary_terms=30&target_lang=Chinese"
+    ).json()
+    assert richer["est_cost_usd"] > base["est_cost_usd"]
+
+
+def test_pricing_endpoint(client):
+    r = client.get("/api/pricing")
+    assert r.status_code == 200
+    assert any(p["model"] == "deepseek-flash" for p in r.json()["prices"])

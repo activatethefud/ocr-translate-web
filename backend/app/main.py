@@ -18,10 +18,9 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 
-from ocrtran import latex, paths
+from ocrtran import estimate, latex, paths
 from ocrtran.cache import load_json, save_json
 from ocrtran.pages import PageSpecError, parse_page_spec
-from ocrtran.pricing import estimate_for_pages
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
 from . import books, db, storage
@@ -334,8 +333,16 @@ def estimate_document(
     model: str | None = None,
     verify_math: bool = False,
     pages: str = "all",
+    figure_mode: str = "tight",
+    target_lang: str = "English",
+    glossary_terms: int = 0,
+    extra_chars: int = 0,
+    dpi: int = 150,
+    max_px: int = 1800,
+    chunk_size: int = 0,
     settings: Settings = Depends(_settings_dep),
 ):
+    """Predict cost from the document + all the job options."""
     s = db.get_session()
     try:
         doc = s.get(db.Document, doc_id)
@@ -347,9 +354,38 @@ def estimate_document(
             raise HTTPException(422, str(exc)) from exc
     finally:
         s.close()
+    sig = estimate.analyze_document(storage.source_path(settings, doc_id))
     return EstimateOut(
-        **estimate_for_pages(model or settings.default_model, n_pages, verify_math=verify_math)
+        **estimate.predict_cost(
+            model or settings.default_model,
+            n_pages,
+            page_w=sig["page_w"],
+            page_h=sig["page_h"],
+            dpi=dpi,
+            max_px=max_px,
+            verify_math=verify_math,
+            figure_mode=figure_mode,
+            glossary_terms=glossary_terms,
+            extra_chars=extra_chars,
+            target_lang=target_lang,
+            formula_fraction=sig["formula_fraction"],
+            figure_fraction=sig["figure_fraction"],
+            avg_chars_per_page=sig["avg_chars_per_page"],
+            chunk_size=chunk_size,
+            rolling_glossary=settings.rolling_glossary,
+        )
     )
+
+
+@app.get("/api/pricing")
+def pricing_list() -> dict:
+    from ocrtran.pricing import PRICES
+
+    return {
+        "currency": "USD",
+        "unit": "per 1M tokens",
+        "prices": [{"model": m, "input": p[0], "output": p[1]} for m, p in PRICES.items()],
+    }
 
 
 # --------------------------------------------------------------------------

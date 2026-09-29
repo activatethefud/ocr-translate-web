@@ -67,6 +67,20 @@ export interface Estimate {
   est_prompt_tokens: number;
   est_completion_tokens: number;
   est_cost_usd: number;
+  est_cost_low?: number;
+  est_cost_high?: number;
+  breakdown?: Record<string, number>;
+  assumptions?: Record<string, number | string | boolean>;
+}
+
+export interface EstimateOptions {
+  model: string;
+  verifyMath: boolean;
+  pages: string;
+  figureMode: "off" | "tight" | "judge";
+  targetLang: string;
+  glossaryTerms: number;
+  extraChars: number;
 }
 
 export interface Usage {
@@ -235,12 +249,18 @@ export const api = {
   rebuild: (id: string, page: number) =>
     fetch(`/api/jobs/${id}/pages/${page}/rebuild`, { method: "POST", headers: headers() }).then(j),
 
-  estimate: (docId: string, model: string, verifyMath: boolean, pages: string) =>
-    fetch(
-      `/api/documents/${docId}/estimate?model=${encodeURIComponent(model)}` +
-        `&verify_math=${verifyMath}&pages=${encodeURIComponent(pages || "all")}`,
-      { headers: headers() },
-    ).then(j<Estimate>),
+  estimate: (docId: string, o: EstimateOptions) => {
+    const q = new URLSearchParams({
+      model: o.model,
+      verify_math: String(o.verifyMath),
+      pages: o.pages || "all",
+      figure_mode: o.figureMode,
+      target_lang: o.targetLang,
+      glossary_terms: String(o.glossaryTerms),
+      extra_chars: String(o.extraChars),
+    });
+    return fetch(`/api/documents/${docId}/estimate?${q}`, { headers: headers() }).then(j<Estimate>);
+  },
 
   report: (jobId: string) =>
     fetch(`/api/jobs/${jobId}/report`, { headers: headers() }).then(j<Report>),

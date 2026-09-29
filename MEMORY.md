@@ -3,6 +3,29 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: cost predictor from all job inputs
+
+- New `ocrtran/estimate.py`:
+  - `analyze_document()` samples the real PDF: dominant page size, average
+    chars/page, and fraction of pages that look like **formulas** (math symbols) or
+    **figures** (images / many vector ops). Cached by (path, mtime).
+  - `predict_cost()` models every cost driver: image tokens (dpi/max_px), OCR
+    output tokens (from chars/page + target script), figure passes
+    (`off|tight|judge`), formula check (`verify_math`), annotation calls, glossary /
+    do-not-translate / instruction overhead, rolling-glossary calls (book), and a
+    retry factor. Returns a `breakdown`, `assumptions`, and a low/high range.
+  - **Calibrated from real usage**: the model emits ~4-9k completion tokens/call
+    (it returns source + translation + LaTeX as JSON), so output is estimated as
+    `(3000 + chars/page*4) * (1.3 for CJK)`; input ~1500/call. On the modifikovani
+    doc: predicted **$0.148** vs actual **$0.127** (range $0.089-$0.252).
+- API: `GET /api/documents/{id}/estimate` now takes model, pages, figure_mode,
+  target_lang, glossary_terms, extra_chars, dpi, max_px, chunk_size, verify_math;
+  new `GET /api/pricing`.
+- UI: estimate shows the range + a per-bucket cost breakdown.
+- Tests: **+14** (207 passed + 1 live).
+
+---
+
 ## Session: book resume correctness fixes
 
 - **Failed chunk no longer stalls the book**: `tick` finalizes when all chunks are

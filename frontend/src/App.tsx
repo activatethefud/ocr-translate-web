@@ -161,8 +161,19 @@ export function App() {
 
   useEffect(() => {
     if (!doc) { setEstimate(null); return; }
-    api.estimate(doc.id, model, verifyMath, pagesSpec).then(setEstimate).catch(() => setEstimate(null));
-  }, [doc?.id, model, verifyMath, pagesSpec]);
+    api
+      .estimate(doc.id, {
+        model,
+        verifyMath,
+        pages: pagesSpec,
+        figureMode,
+        targetLang,
+        glossaryTerms: parseGlossary(glossaryText).length,
+        extraChars: llmInstructions.length + doNotTranslate.length,
+      })
+      .then(setEstimate)
+      .catch(() => setEstimate(null));
+  }, [doc?.id, model, verifyMath, pagesSpec, figureMode, targetLang, glossaryText, llmInstructions, doNotTranslate]);
 
   const running = job && (job.status === "queued" || job.status === "running");
   const activePage = useMemo(() => pages.find((p) => p.page === active), [pages, active]);
@@ -439,8 +450,22 @@ export function App() {
                       onChange={(e) => setLlmInstructions(e.target.value)} />
           </label>
           {estimate && (
-            <p className="muted">≈ ${estimate.est_cost_usd.toFixed(4)} · {estimate.est_calls} model calls
-              ({estimate.pages} pages, {model})</p>
+            <div className="muted">
+              ≈ <b>${estimate.est_cost_usd.toFixed(4)}</b>
+              {estimate.est_cost_low !== undefined && (
+                <> (range ${estimate.est_cost_low.toFixed(3)}–${(estimate.est_cost_high ?? 0).toFixed(3)})</>
+              )}{" "}
+              · {estimate.est_calls} calls · {estimate.pages} pages
+              {estimate.breakdown && (
+                <div className="cost-breakdown">
+                  {Object.entries(estimate.breakdown)
+                    .filter(([, v]) => v > 0)
+                    .map(([k, v]) => (
+                      <span key={k}>{k.replace(/_/g, " ")} ${v.toFixed(4)}</span>
+                    ))}
+                </div>
+              )}
+            </div>
           )}
           <label className="check">
             <input type="checkbox" checked={bookMode} onChange={(e) => setBookMode(e.target.checked)} />

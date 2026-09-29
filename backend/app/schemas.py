@@ -164,6 +164,10 @@ class EstimateOut(BaseModel):
     est_prompt_tokens: int
     est_completion_tokens: int
     est_cost_usd: float
+    est_cost_low: float | None = None
+    est_cost_high: float | None = None
+    breakdown: dict[str, float] = {}
+    assumptions: dict = {}
 
 
 class UsageOut(BaseModel):
