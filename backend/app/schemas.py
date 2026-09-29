@@ -150,6 +150,12 @@ class BookCreate(JobCreate):
     chunk_size: int = 25
     from_page: int = 1
     to_page: int | None = None
+    boundaries: list[BoundaryItem] = []  # [{"page": n, "title": "Chapter 1"}]
+
+
+class BoundaryItem(BaseModel):
+    page: int
+    title: str
 
 
 class ChunkOut(BaseModel):

@@ -267,6 +267,8 @@ def run_build(
             pdfs=pdfs,
         ) -> None:
             cancel.check()
+            if entry.get("blank"):
+                return  # blank page -> no translated PDF, original is kept
             page = entry["page"]
             tex = build_tex(cfg, base, source_pdf, entry)
             tex_path = paths.page_tex(cfg.workdir, base, page)

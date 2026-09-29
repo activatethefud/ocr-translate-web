@@ -111,22 +111,33 @@ def assemble(
         size = (outW, outH)
         area = fitz.Rect(margin, margin, outW - margin, outH - margin)
 
+        src_first: dict[int, int] = {}  # source page -> output page index (0-based)
+
+        def mark(p: int, _first=src_first, _out=out) -> None:
+            _first.setdefault(p, _out.page_count)
+
         if mode == "interleave":
             for i in range(n):
                 p = i + 1
                 if p in selected:
+                    mark(p)
                     _add_original(out, src, i)
                     _add_translation(out, src, cfg, base, p, size, area)
                 elif keep_unselected:
+                    mark(p)
                     _add_original(out, src, i)
         elif mode == "grouped":
             orig_pages = range(n) if keep_unselected else [p - 1 for p in selected]
             for i in orig_pages:
+                mark(i + 1)
                 _add_original(out, src, i)
             for p in selected:
+                if p not in src_first:
+                    mark(p)
                 _add_translation(out, src, cfg, base, p, size, area)
         elif mode == "translated_only":
             for p in selected:
+                mark(p)
                 _add_translation(out, src, cfg, base, p, size, area, fallback=True)
         elif mode == "side_by_side":
             half = (outW - 3 * margin) / 2
@@ -135,6 +146,7 @@ def assemble(
             for i in range(n):
                 p = i + 1
                 if p in selected:
+                    mark(p)
                     page = out.new_page(width=outW, height=outH)
                     _place(page, src, i, left, _eff_max_scale(cfg))  # original left
                     tp = _translated_pdf(cfg, base, p)
@@ -143,7 +155,19 @@ def assemble(
                         _place(page, cd, 0, right, _eff_max_scale(cfg))
                         cd.close()
                 elif keep_unselected:
+                    mark(p)
                     _add_original(out, src, i)
+
+        toc = []
+        for b in cfg.boundaries or []:
+            try:
+                bp, title = int(b.get("page")), str(b.get("title") or "").strip()
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if title and bp in src_first:
+                toc.append([1, title, src_first[bp] + 1])  # fitz TOC page is 1-based
+        if toc:
+            out.set_toc(toc)
 
         outpath = paths.output_pdf(cfg.workdir, base, cfg.target_lang, mode)
         outpath.parent.mkdir(parents=True, exist_ok=True)

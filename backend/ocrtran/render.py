@@ -90,3 +90,20 @@ def looks_scanned(pdf: str | Path, sample: int = 3) -> bool:
         pages = list(range(min(sample, doc.page_count)))
         chars = sum(len(doc[i].get_text().strip()) for i in pages)
         return chars < 20 * max(1, len(pages))
+
+
+def page_ink_ratio(pdf: str | Path, page_no: int, dpi: int = 50) -> float:
+    """Fraction of non-white pixels on a page (low = blank)."""
+    with fitz.open(pdf) as doc:
+        page = doc[page_no - 1]
+        zoom = dpi / 72.0
+        zoom = min(zoom, 400 / max(page.rect.width, page.rect.height, 1))
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), colorspace=fitz.csGRAY)
+        data = pix.samples
+        if not data:
+            return 0.0
+        return sum(1 for b in data if b < 245) / len(data)
+
+
+def is_blank(pdf: str | Path, page_no: int, threshold: float = 0.002) -> bool:
+    return page_ink_ratio(pdf, page_no) < threshold

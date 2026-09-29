@@ -50,6 +50,9 @@ class PipelineConfig:
     text_width: str = "16.5cm"
     figure_px: int = 1800
     figure_pad: float = 0.06  # pad figure boxes by this fraction (avoids clipping)
+    skip_blank_pages: bool = True  # don't translate (near-)blank pages
+    blank_threshold: float = 0.002  # ink ratio below which a page is "blank"
+    boundaries: list[dict] = field(default_factory=list)  # [{"page": n, "title": "..."}]
     figure_mode: str = "tight"  # off | tight | judge (extra model calls for better boxes)
 
     # --- assembly ---

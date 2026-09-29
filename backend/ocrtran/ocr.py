@@ -152,6 +152,7 @@ def run_ocr(
         def process(
             task: tuple[int, int, object],
             *,
+            source=source,
             base=base,
             doc_sha=doc_sha,
             prior=prior,
@@ -167,6 +168,24 @@ def run_ocr(
                 on_event,
                 Event("ocr", "progress", base=base, page=pi, index=idx, total=total_pages, message="page"),
             )
+            if cfg.skip_blank_pages and render.is_blank(source, pi, cfg.blank_threshold):
+                entry = {"page": pi, "img": str(img), "blocks": [], "tight": [], "blank": True}
+                with lock:
+                    collected[pi] = entry
+                    cache.save_json(ocr_path, [collected[k] for k in sorted(collected)])
+                emit(
+                    on_event,
+                    Event(
+                        "ocr",
+                        "skipped",
+                        base=base,
+                        page=pi,
+                        index=idx,
+                        total=total_pages,
+                        message="blank page",
+                    ),
+                )
+                return entry
             sig = cache.prompt_sig(
                 cfg.prompt_version, cfg.glossary, cfg.do_not_translate, cfg.llm_instructions
             )
