@@ -155,6 +155,12 @@ Each must have a named test:
 19. **Re-runs must be cached across jobs** — `cache_dir` is document-level; a second
     job on the same page makes zero model calls.
 20. **Annotation batching** — all `\text{...}` groups on a page go in one call.
+21. **Verifier must know the selection** — expected page count accounts for
+    `pages`/`unprocessed`, and page-size checks compare against the *set* of source
+    sizes (sources can mix letter + A4), not just page 1. (These caused false
+    `page_count`/`page_size` warnings on real documents.)
+22. **Orphaned single jobs** — on startup, in-process `queued`/`running` single jobs
+    are marked `failed` ("interrupted by server restart"); book chunks resume.
 
 ## Coverage & CI
 

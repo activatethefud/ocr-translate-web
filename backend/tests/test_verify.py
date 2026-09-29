@@ -104,3 +104,59 @@ def test_verify_math_page_handles_no_json(tmp_path):
 
 def test_leftover_words_allow_list():
     assert verify.leftover_words("Attention le chat", allow={"attention", "chat"}) == []
+
+
+def test_expected_pages_accounts_for_selection():
+    from ocrtran.verify import _expected_pages
+
+    assert _expected_pages("interleave", 17, set(range(1, 18)), True) == 34
+    assert _expected_pages("interleave", 17, set(range(1, 6)), True) == 22  # 5 tx + 12 orig
+    assert _expected_pages("interleave", 17, set(range(1, 6)), False) == 10
+    assert _expected_pages("grouped", 17, set(range(1, 6)), True) == 22
+    assert _expected_pages("side_by_side", 17, set(range(1, 6)), True) == 17
+    assert _expected_pages("translated_only", 17, set(range(1, 6)), True) == 5
+
+
+def test_translated_positions_selection():
+    from ocrtran.verify import _translated_positions
+
+    # pages 1 and 3 selected, all kept, interleave -> positions 1 and 4 (0-based)
+    assert _translated_positions("interleave", 4, {1, 3}, True) == [1, 4]
+    assert _translated_positions("grouped", 4, {1, 3}, True) == [4, 5]
+    assert _translated_positions("translated_only", 4, {1, 3}, True) == [0, 1]
+
+
+@pytest.mark.integration
+def test_verify_output_selection_aware(tiny_pdf, tmp_path):
+    from ocrtran import assemble, paths
+
+    workdir = tmp_path / "w"
+    base = tiny_pdf.stem
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)], workdir=str(workdir), combine="interleave", pages="1", unprocessed="original"
+    )
+    make_translated_page(paths.page_pdf(workdir, base, 1))
+    out = assemble.assemble(cfg)[base]
+    issues = verify.verify_output(cfg, str(tiny_pdf), out)
+    assert issues == []  # 1 tx + 2 originals = 3 pages, no false alarm
+
+
+@pytest.mark.integration
+def test_verify_output_mixed_page_sizes(tmp_path):
+    import fitz
+
+    from ocrtran import assemble, paths
+
+    src = tmp_path / "mixed.pdf"
+    d = fitz.open()
+    d.new_page(width=300, height=400).insert_text((20, 40), "a")
+    d.new_page(width=400, height=300).insert_text((20, 40), "b")
+    d.save(src)
+    d.close()
+    workdir = tmp_path / "w"
+    base = src.stem
+    cfg = PipelineConfig(sources=[str(src)], workdir=str(workdir), combine="interleave")
+    for p in (1, 2):
+        make_translated_page(paths.page_pdf(workdir, base, p))
+    out = assemble.assemble(cfg)[base]
+    assert verify.verify_output(cfg, str(src), out) == []

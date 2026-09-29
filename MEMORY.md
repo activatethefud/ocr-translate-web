@@ -3,6 +3,28 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: diagnosis — Chinese translation "issues" were verifier false alarms
+
+- Repro: `~/Downloads/modifikovani-model-nadmetanja-dve-vrste.pdf` (17 pages, 16
+  letter + 1 A4, figures on pp. 14-15) -> Chinese. The report showed
+  `page_count expected 34 got 22` and a `page_size` mismatch.
+- **Not a translation bug.** The job used a page *selection* (`1-5`) with
+  `unprocessed=original` (-> 5 tx + 12 originals = 22 pages), but `verify_output`
+  assumed all pages and compared every page to page 1 (source mixes letter + A4).
+- **Fix** (`ocrtran/verify.py`): expected pages account for `pages`/`unprocessed`;
+  page-size check uses the set of source sizes (+ configured output size); empty-page
+  check uses computed translation positions.
+- Also: **orphaned single-job recovery** on startup (mark queued/running single jobs
+  failed; book chunks already recover).
+- **Re-ran full doc**: 17 pages -> 34-page interleaved Chinese PDF, report issues
+  `[]`, $0.1266 (1-5 from cache), 144 s.
+- Note: the CJK font embeds under the TTC's shared name `NotoSansCJKjp-*`, but the
+  **SC glyphs are used** (verified SC vs JP render differently; `fc-match` resolves
+  the SC face). Cosmetic only.
+- Tests: **175 passed + 1 live** (+3 verify selection/mixed-size).
+
+---
+
 ## Session: L2 durable book translation (implemented)
 
 - **DB**: `chunks` table + `jobs.kind`/`jobs.parent_id`; additive migration

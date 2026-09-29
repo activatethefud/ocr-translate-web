@@ -54,6 +54,7 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     db.init_db(settings.resolved_database_url())
+    _recover_orphaned_jobs()
     app.state.settings = settings
     app.state.runner = JobRunner(settings)
     app.state.dispatcher = books.BookDispatcher(settings)
@@ -91,6 +92,26 @@ def _runner() -> JobRunner:
 
 def _dispatcher() -> books.BookDispatcher:
     return app.state.dispatcher
+
+
+def _recover_orphaned_jobs() -> None:
+    """Single jobs are in-process; after a restart mark them failed (book chunks are
+    recovered by the dispatcher and resume from the cache)."""
+    s = db.get_session()
+    try:
+        rows = (
+            s.execute(select(db.Job).where(db.Job.kind == "single", db.Job.status.in_(("queued", "running"))))
+            .scalars()
+            .all()
+        )
+        for job in rows:
+            job.status = "failed"
+            job.error = "interrupted by server restart"
+            job.finished_at = db.utcnow()
+        if rows:
+            s.commit()
+    finally:
+        s.close()
 
 
 # --------------------------------------------------------------------------

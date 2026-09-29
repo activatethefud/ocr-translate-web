@@ -101,42 +101,68 @@ def verify_ocr(results: dict[str, list[dict]]) -> list[dict]:
     return issues
 
 
+def _expected_pages(mode: str, n: int, selected: set[int], keep_unselected: bool) -> int:
+    k = len(selected)
+    if mode in ("interleave", "grouped"):
+        return (n if keep_unselected else k) + k
+    if mode == "side_by_side":
+        return n if keep_unselected else k
+    return k  # translated_only
+
+
+def _translated_positions(mode: str, n: int, selected: set[int], keep: bool) -> list[int]:
+    """0-based positions (in the output) that hold translations."""
+    if mode == "interleave":
+        pos, out = 0, []
+        for p in range(1, n + 1):
+            if p in selected:
+                out.append(pos + 1)  # translation follows the original
+                pos += 2
+            elif keep:
+                pos += 1
+        return out
+    if mode == "grouped":
+        start = n if keep else len(selected)
+        return list(range(start, start + len(selected)))
+    if mode == "translated_only":
+        return list(range(len(selected)))
+    return []  # side_by_side mixes languages
+
+
 def verify_output(cfg: PipelineConfig, source_pdf: str, output_pdf: str | Path) -> list[dict]:
-    """Check page count, page size, empty translated pages, leftovers."""
+    """Check page count, page size, empty translated pages, leftovers.
+
+    Accounts for a page *selection* (``cfg.pages``) and ``cfg.unprocessed``, and for
+    sources with **mixed page sizes** (comparing against the set of source sizes,
+    not just page 1).
+    """
+    from .pages import parse_page_spec
+
     issues: list[dict] = []
     src = fitz.open(source_pdf)
     out = fitz.open(str(output_pdf))
     n = src.page_count
     mode = cfg.output_mode
+    selected = set(parse_page_spec(cfg.pages, n))
+    keep = cfg.unprocessed == "original"
 
-    expected = n * EXPECTED_PAGE_MULTIPLIER[mode]
+    expected = _expected_pages(mode, n, selected, keep)
     if out.page_count != expected:
         issues.append({"kind": "page_count", "expected": expected, "got": out.page_count})
 
-    sw, sh = src[0].rect.width, src[0].rect.height
+    allowed = {(round(p.rect.width), round(p.rect.height)) for p in src}
+    if cfg.output_page_size == "a4":
+        allowed.add((595, 842))
+    elif cfg.output_page_size == "letter":
+        allowed.add((612, 792))
     for i, page in enumerate(out):
-        if abs(page.rect.width - sw) > 1 or abs(page.rect.height - sh) > 1:
-            issues.append(
-                {
-                    "kind": "page_size",
-                    "page": i + 1,
-                    "expected": (sw, sh),
-                    "got": (page.rect.width, page.rect.height),
-                }
-            )
-            break
+        key = (round(page.rect.width), round(page.rect.height))
+        if key not in allowed:
+            issues.append({"kind": "page_size", "page": i + 1, "got": key, "allowed": sorted(allowed)})
 
-    # which output pages are translations?
-    if mode == "interleave":
-        translated = list(range(1, out.page_count, 2))
-    elif mode == "grouped":
-        translated = list(range(n, out.page_count))
-    elif mode == "translated_only":
-        translated = list(range(out.page_count))
-    else:  # side_by_side mixes languages -> skip content checks
-        translated = []
-
-    for i in translated:
+    for i in _translated_positions(mode, n, selected, keep):
+        if i >= out.page_count:
+            continue
         page = out[i]
         if not page.get_text().strip() and not page.get_images():
             issues.append({"kind": "empty_page", "page": i + 1})
