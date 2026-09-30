@@ -174,6 +174,13 @@ contains no `\sqrt`/`\frac`/`\cdot`.
 - `test_api.py`: `POST /api/batch {book:true}` returns book children; the default is
   still single children.
 
+### 9e. Finalize robustness / UI polling
+- `test_books.py`: `_has_page` matches split parts (`p01-2.pdf`); `_finalize` sets
+  `failed` (never stuck in `finalizing`) on an assemble error and on a pre-merge error;
+  `recover()` resets a book stuck in `finalizing` back to `running`.
+- The frontend polls while `queued|running|finalizing` so the download link appears by
+  itself when assembly finishes.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

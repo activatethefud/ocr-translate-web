@@ -185,11 +185,14 @@ export function App() {
   }, [doc?.id, model, verifyMath, pagesSpec, figureMode, targetLang, glossaryText, llmInstructions, doNotTranslate]);
 
   const running = job && (job.status === "queued" || job.status === "running");
+  // "finalizing" is still busy (assembling the merged PDF) -> keep polling so the
+  // download link appears on its own
+  const jobActive = job && (job.status === "queued" || job.status === "running" || job.status === "finalizing");
   const activePage = useMemo(() => pages.find((p) => p.page === active), [pages, active]);
 
   // ticking elapsed timer while a job runs
   useEffect(() => {
-    if (!running || !job) {
+    if (!jobActive || !job) {
       setElapsed(0);
       return;
     }
@@ -198,7 +201,7 @@ export function App() {
     tick();
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
-  }, [running, job?.id, job?.started_at]);
+  }, [jobActive, job?.id, job?.started_at]);
 
   async function refreshJob() {
     if (!job) return;
@@ -214,7 +217,7 @@ export function App() {
   }
 
   useEffect(() => {
-    if (!running || !job) return;
+    if (!jobActive || !job) return;
     const es = new EventSource(`/api/jobs/${job.id}/events`);
     esRef.current = es;
     es.addEventListener("progress", (ev) => {
@@ -231,7 +234,7 @@ export function App() {
     const iv = setInterval(refreshJob, 1500);
     return () => { es.close(); clearInterval(iv); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, job?.id]);
+  }, [jobActive, job?.id]);
 
   async function onUpload(file: File) {
     setError(""); setBusy(true);
@@ -600,9 +603,13 @@ export function App() {
                 <span className="muted">{job.mode}</span>
                 {running && <button className="ghost" onClick={() => api.cancel(job.id)}>Cancel</button>}
               </div>
-              <progress value={running ? undefined : job.progress} max={1} />
+              <progress value={jobActive ? undefined : job.progress} max={1} />
               <p className="muted">
-                {running ? (
+                {job.status === "finalizing" ? (
+                  <>
+                    <b>finalizing — assembling the merged PDF…</b> · {elapsed}s
+                  </>
+                ) : running ? (
                   <>
                     <b>{stage || "working…"}</b> · {elapsed}s
                     {job.progress > 0 && <> · {Math.round(job.progress * 100)}%</>} · {job.done_pages}/

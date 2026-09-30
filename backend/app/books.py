@@ -143,6 +143,13 @@ class BookDispatcher:
             for chunk in s.execute(select(db.Chunk).where(db.Chunk.state == "running")).scalars():
                 chunk.state = "queued"
                 chunk.started_at = None
+            # a crash mid-assembly must not leave a book stuck in "finalizing"
+            for book in (
+                s.execute(select(db.Job).where(db.Job.kind == "book", db.Job.status == "finalizing"))
+                .scalars()
+                .all()
+            ):
+                book.status = "running"
             s.commit()
         finally:
             s.close()
@@ -369,24 +376,33 @@ class BookDispatcher:
 
     # -- final merge ---------------------------------------------------
     def _finalize(self, book_id: str) -> None:
-        s = db.get_session()
+        """Assemble the chunk page PDFs once into the final book.
+
+        Runs in an executor thread; wrapped end-to-end so a failure can never leave
+        the book stuck in ``finalizing``.
+        """
         try:
-            book = s.get(db.Job, book_id)
-            doc = s.get(db.Document, book.document_id)
-            book_config, doc_id = dict(book.config), doc.id
-            chunks = s.execute(select(db.Chunk).where(db.Chunk.book_job_id == book_id)).scalars().all()
-            cost = sum(c.cost_usd for c in chunks)
-        finally:
-            s.close()
-        if chunks:
-            first, last = min(c.page_from for c in chunks), max(c.page_to for c in chunks)
-        else:
-            first, last = 1, cfg_total_pages(book_config, doc_id, self.settings)
-        try:
+            s = db.get_session()
+            try:
+                book = s.get(db.Job, book_id)
+                if book is None:
+                    return
+                doc = s.get(db.Document, book.document_id)
+                doc_id = doc.id if doc else ""
+                book_config = dict(book.config or {})
+                chunks = s.execute(select(db.Chunk).where(db.Chunk.book_job_id == book_id)).scalars().all()
+                cost = sum(c.cost_usd or 0.0 for c in chunks)
+            finally:
+                s.close()
+            if chunks:
+                first, last = min(c.page_from for c in chunks), max(c.page_to for c in chunks)
+            else:
+                first, last = 1, cfg_total_pages(book_config, doc_id, self.settings)
+
             cfg = self._final_config(book_config, doc_id, book_id, first, last)
             outputs = assemble_mod.assemble(cfg)
             book_tex = storage.work_dir(self.settings, doc_id, book_id) / "source" / "tex"
-            missing = [p for p in range(first, last + 1) if not (book_tex / f"p{p:02d}.pdf").exists()]
+            missing = [p for p in range(first, last + 1) if not _has_page(book_tex, p)]
             name = (book_config.get("output_name") or "").strip() or "book"
             for _base, path in outputs.items():
                 dest = storage.copy_artifact(
@@ -420,15 +436,16 @@ class BookDispatcher:
             finally:
                 s.close()
             _emit(book_id, "book_done", "assembled", report)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - never leave the book in finalizing
             log.exception("finalize failed for book %s", book_id)
             s = db.get_session()
             try:
                 b = s.get(db.Job, book_id)
-                b.status = "failed"
-                b.error = str(exc)
-                b.finished_at = db.utcnow()
-                s.commit()
+                if b is not None:
+                    b.status = "failed"
+                    b.error = str(exc)[:1000]
+                    b.finished_at = db.utcnow()
+                    s.commit()
             finally:
                 s.close()
 
@@ -446,6 +463,10 @@ class BookDispatcher:
             }
         )
         return PipelineConfig.from_dict(data)
+
+
+def _has_page(book_tex: Path, page: int) -> bool:
+    return (book_tex / f"p{page:02d}.pdf").exists() or bool(list(book_tex.glob(f"p{page:02d}-*.pdf")))
 
 
 def cfg_total_pages(book_config: dict, doc_id: str, settings: Settings) -> int:

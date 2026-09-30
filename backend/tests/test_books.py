@@ -753,3 +753,63 @@ def test_tick_progress_uses_partial_chunks(env):
     job = db.get_session().get(db.Job, bid)
     assert job.done_pages == 2
     assert abs(job.progress - 0.5) < 1e-6
+
+
+# -- finalize robustness ---------------------------------------------------
+def test_has_page_matches_split_parts(tmp_path):
+    from app.books import _has_page
+
+    d = tmp_path / "tex"
+    d.mkdir()
+    assert not _has_page(d, 1)
+    (d / "p01.pdf").write_bytes(b"x")
+    assert _has_page(d, 1)
+    (d / "p02-2.pdf").write_bytes(b"x")  # a source page split into parts
+    assert _has_page(d, 2)
+
+
+def test_finalize_failure_marks_failed_not_stuck(env, monkeypatch):
+    import ocrtran.assemble as asm
+
+    bid = _new_book(env, n_pages=1, chunk_size=1)
+
+    def boom(_cfg):
+        raise RuntimeError("assemble boom")
+
+    monkeypatch.setattr(asm, "assemble", boom)
+    _dispatcher(env)._finalize(bid)
+    job = db.get_session().get(db.Job, bid)
+    assert job.status == "failed" and "boom" in (job.error or "")
+
+
+def test_finalize_error_before_the_merge_marks_failed(env, monkeypatch):
+    import app.books as books_mod
+
+    bid = _new_book(env, n_pages=1, chunk_size=1)
+    s = db.get_session()
+    try:
+        for c in s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid)).scalars():
+            s.delete(c)  # no chunks -> _finalize uses cfg_total_pages (patched to raise)
+        s.commit()
+    finally:
+        s.close()
+
+    def boom(*_a, **_k):
+        raise RuntimeError("pre-merge boom")
+
+    monkeypatch.setattr(books_mod, "cfg_total_pages", boom)
+    _dispatcher(env)._finalize(bid)  # must not raise / must not stay finalizing
+    job = db.get_session().get(db.Job, bid)
+    assert job.status == "failed" and "pre-merge boom" in (job.error or "")
+
+
+def test_recover_resets_a_book_stuck_in_finalizing(env):
+    bid = _new_book(env, n_pages=1, chunk_size=1)
+    s = db.get_session()
+    try:
+        s.get(db.Job, bid).status = "finalizing"
+        s.commit()
+    finally:
+        s.close()
+    _dispatcher(env).recover()
+    assert db.get_session().get(db.Job, bid).status == "running"
