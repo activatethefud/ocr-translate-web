@@ -903,7 +903,9 @@ def create_batch_endpoint(
         cfg["concurrency"] = body.concurrency or settings.page_concurrency
         cfg["output_name"] = (body.output_name or "").strip()  # per-child names are derived
         guards.enforce_submit(s, settings, sid)
-        job = batch_mod.create_batch(s, settings, docs, cfg, session_id=sid)
+        job = batch_mod.create_batch(
+            s, settings, docs, cfg, session_id=sid, book=body.book, chunk_size=body.chunk_size
+        )
         out = _job_out(s, job)
     finally:
         s.close()

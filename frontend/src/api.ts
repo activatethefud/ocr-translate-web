@@ -150,6 +150,8 @@ export interface BookCreate extends JobCreate {
 
 export interface BatchCreate extends JobCreate {
   document_ids: string[];
+  book?: boolean;
+  chunk_size?: number;
 }
 
 export interface JobCreate {

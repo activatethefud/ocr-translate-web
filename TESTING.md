@@ -166,6 +166,14 @@ contains no `\sqrt`/`\frac`/`\cdot`.
 - `test_storage.py`: `prune_work` removes `source/pages`, `source/tex`, `chunks/` for
   finished jobs, keeps active jobs and `source/ocr.json`.
 
+### 9d. Queuing whole books
+- `test_batch.py`: `book=True` makes `kind="book"` children (with chunks, whole-document
+  page counts, status queued); the batch dispatcher does **not** run their pages itself
+  (the book dispatcher does); recovery leaves book children untouched; an integration
+  test runs a 2-book batch end-to-end through both dispatchers.
+- `test_api.py`: `POST /api/batch {book:true}` returns book children; the default is
+  still single children.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

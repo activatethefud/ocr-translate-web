@@ -175,6 +175,8 @@ class BatchCreate(JobCreate):
     """Translate several documents sequentially with one shared config."""
 
     document_ids: list[str]
+    book: bool = False  # each document is a durable, chunked book job
+    chunk_size: int = 25
 
 
 class ChunkOut(BaseModel):

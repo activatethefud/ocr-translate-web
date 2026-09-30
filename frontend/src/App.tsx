@@ -277,7 +277,7 @@ export function App() {
     };
     try {
       const j = queueMode
-        ? await api.createBatch({ ...body, document_ids: batchDocs })
+        ? await api.createBatch({ ...body, document_ids: batchDocs, book: bookMode, chunk_size: chunkSize })
         : bookMode && doc
           ? await api.createBook(doc.id, { ...body, chunk_size: chunkSize })
           : await api.createJob(doc!.id, body);
@@ -576,7 +576,7 @@ export function App() {
             <input type="checkbox" checked={bookMode} onChange={(e) => setBookMode(e.target.checked)} />
             book mode — translate in chunks (durable, resumable)
           </label>
-          {bookMode && (
+          {(bookMode || queueMode) && (
             <label>Chunk size (pages)
               <input type="number" min={1} max={200} value={chunkSize}
                      onChange={(e) => setChunkSize(Math.max(1, Number(e.target.value) || 1))} />
@@ -585,7 +585,7 @@ export function App() {
           <button disabled={(queueMode ? batchDocs.length === 0 : !doc) || busy || !!running}
                   onClick={onStart}>
             {queueMode
-              ? `Start batch (${batchDocs.length} document${batchDocs.length === 1 ? "" : "s"})`
+              ? `Start batch (${batchDocs.length} ${bookMode ? "book" : "document"}${batchDocs.length === 1 ? "" : "s"})`
               : bookMode ? "Start book job" : "Start job"}
           </button>
         </section>

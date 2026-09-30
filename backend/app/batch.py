@@ -20,7 +20,7 @@ from sqlalchemy import select
 from ocrtran.config import PipelineConfig
 from ocrtran.pages import parse_page_spec
 
-from . import db
+from . import books, db
 from .runner import JobRunner
 from .secrets import get_cipher
 from .settings import Settings
@@ -37,15 +37,20 @@ def create_batch(
     config: dict,
     *,
     session_id: str = "default",
+    book: bool = False,
+    chunk_size: int = 25,
 ) -> db.Job:
-    """Create a batch job + one queued child job per document. Caller commits."""
+    """Create a batch job + one queued child per document (a single or a book job)."""
     cfgs = [dict(config) for _ in docs]
-    total = 0
     for cfg in cfgs:
         cfg["session_id"] = session_id
-    # parse the requested pages per document (they differ in page count)
-    ranges = [len(parse_page_spec(cfgs[i].get("pages"), d.n_pages)) for i, d in enumerate(docs)]
+    # pages covered: whole document for a book child, else the requested range
+    if book:
+        ranges = [d.n_pages for d in docs]
+    else:
+        ranges = [len(parse_page_spec(cfgs[i].get("pages"), d.n_pages)) for i, d in enumerate(docs)]
     total = sum(ranges)
+    config = {**config, "book": book, "chunk_size": chunk_size}
 
     parent = db.Job(
         document_id=docs[0].id,
@@ -80,20 +85,33 @@ def create_batch(
             cfg["output_name"] = f"{base_name} - {i + 1:02d} {stem}"
         else:
             cfg["output_name"] = f"{i + 1:02d} {stem} ({target})"
-        s.add(
-            db.Job(
-                document_id=doc.id,
-                config=cfg,
-                status="queued",
-                kind="single",
+        if book:
+            cfg["pages"] = "all"
+            books.create_book(
+                s,
+                settings,
+                doc,
+                cfg,
+                chunk_size=chunk_size,
+                session_id=session_id,
                 parent_id=parent.id,
-                model=parent.model,
-                source_lang=parent.source_lang,
-                target_lang=parent.target_lang,
-                mode=parent.mode,
-                total_pages=ranges[i],
+                status="queued",
             )
-        )
+        else:
+            s.add(
+                db.Job(
+                    document_id=doc.id,
+                    config=cfg,
+                    status="queued",
+                    kind="single",
+                    parent_id=parent.id,
+                    model=parent.model,
+                    source_lang=parent.source_lang,
+                    target_lang=parent.target_lang,
+                    mode=parent.mode,
+                    total_pages=ranges[i],
+                )
+            )
     s.commit()
     return parent
 
@@ -139,10 +157,10 @@ class BatchDispatcher:
             )
             for batch in books:
                 for child in self._children(s, batch.id):
+                    if child.kind == "book" or child.status == "canceled":
+                        continue  # books recover their own chunks
                     if child.status in ("running", "finalizing"):
                         child.status = "queued"
-                    if child.status == "canceled":
-                        continue
             s.commit()
         finally:
             s.close()
@@ -219,13 +237,19 @@ class BatchDispatcher:
         s = db.get_session()
         try:
             child = s.get(db.Job, child_id)
-            key = self._api_key(child)
+            kind = child.kind if child else ""
+            key = None if kind == "book" else self._api_key(child)
         except Exception:  # noqa: BLE001
-            child, key = None, None
+            child, key, kind = None, None, ""
         finally:
             s.close()
         if child is None:
             self._finish_inflight(child_id)
+            return
+        if kind == "book":
+            # the book dispatcher owns the chunks; it is already marked running
+            self._finish_inflight(child_id)
+            self.wake()
             return
         try:
             if not key:
@@ -294,6 +318,10 @@ class BatchDispatcher:
                     child.finished_at = db.utcnow()
                 elif child.status in ("running", "finalizing"):
                     self.runner.cancel(child.id)
+                if child.kind == "book":
+                    for ch in s.execute(select(db.Chunk).where(db.Chunk.book_job_id == child.id)).scalars():
+                        if ch.state == "queued":
+                            ch.state = "canceled"
             batch.status = "canceled"
             batch.finished_at = db.utcnow()
             s.commit()

@@ -75,8 +75,14 @@ def create_book(
     page_from: int = 1,
     page_to: int | None = None,
     session_id: str = "default",
+    parent_id: str | None = None,
+    status: str = "running",
 ) -> db.Job:
-    """Create a durable book job + its queued chunks (caller commits)."""
+    """Create a durable book job + its queued chunks (caller commits).
+
+    ``status="queued"`` + a ``parent_id`` creates a book as a *batch child*: the batch
+    dispatcher starts it and the book dispatcher runs its chunks.
+    """
     chunks = plan_chunks(doc.n_pages, chunk_size, page_from, page_to)
     total = sum(b - a + 1 for _i, a, b in chunks)
     cfg = dict(config)
@@ -86,9 +92,10 @@ def create_book(
     book = db.Job(
         document_id=doc.id,
         config=cfg,
-        status="running",
+        status=status,
         kind="book",
-        started_at=db.utcnow(),
+        parent_id=parent_id,
+        started_at=db.utcnow() if status == "running" else None,
         model=cfg.get("model") or settings.default_model,
         source_lang=cfg.get("source_lang", "auto"),
         target_lang=cfg.get("target_lang", ""),

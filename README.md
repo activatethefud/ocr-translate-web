@@ -99,7 +99,12 @@ document gets its own child job, events, progress and artifact, named `NN <name>
 (<target>).pdf`; the batch page shows a per-document table. Because each document has
 its own cache, re-queuing a document is free where it is unchanged.
 
-API: `POST /api/batch` (`{document_ids, ...JobCreate}`) → a `kind="batch"` job;
+Tick **queue multiple documents** together with **book mode** to queue **whole books**:
+each document becomes a durable, chunked `kind="book"` child (chunked + resumable),
+still processed one book at a time.
+
+API: `POST /api/batch` (`{document_ids, book, chunk_size, ...JobCreate}`) → a
+`kind="batch"` job;
 `GET /api/jobs/{id}/children` lists the child jobs; `POST /api/jobs/{id}/cancel`
 cancels the batch. A restart re-queues only the interrupted document.
 

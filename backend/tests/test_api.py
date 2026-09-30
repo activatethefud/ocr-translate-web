@@ -366,3 +366,22 @@ def test_resume_book_requeues_failed_chunks(client, tiny_pdf):
         assert c.state == "queued" and c.attempts == 0 and c.error is None
     finally:
         s.close()
+
+
+def test_batch_api_book_children(client, tiny_pdf):
+    d1 = _upload(client, tiny_pdf).json()
+    d2 = _upload(client, tiny_pdf).json()
+    r = client.post(
+        "/api/batch",
+        json={"target_lang": "French", "document_ids": [d1["id"], d2["id"]], "book": True, "chunk_size": 1},
+    )
+    assert r.status_code == 200, r.text
+    kids = client.get(f"/api/jobs/{r.json()['id']}/children").json()
+    assert [k["kind"] for k in kids] == ["book", "book"]
+
+
+def test_batch_api_single_children_still_default(client, tiny_pdf):
+    d1 = _upload(client, tiny_pdf).json()
+    r = client.post("/api/batch", json={"target_lang": "French", "document_ids": [d1["id"]]})
+    kids = client.get(f"/api/jobs/{r.json()['id']}/children").json()
+    assert [k["kind"] for k in kids] == ["single"]
