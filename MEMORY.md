@@ -3,6 +3,58 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: untranslated tables + narrow caption columns
+
+Two issues in a 242-page book (biologija, Chinese):
+
+1. **Tables left in Serbian.** `annotate` only translated `\text{...}` groups, so headers
+   written as `\textbf{...}` (34 of 35 cached tables had Cyrillic headers) and **bare**
+   cells (`Облик тела & сталан`) were never translated. Fixes:
+   - `TEXTCMD` now matches the whole text family (`textbf`, `textit`, `textsf`, `texttt`,
+     `textsc`, `emph`, `mbox`, `mathrm`, ...); replacement **preserves the command** so
+     bold headers stay bold.
+   - new `find_text_spans(..., include_bare=True)` (tables only) also matches **whole bare
+     cells** (not commands, not `$...$`, not LaTeX keywords) and wraps them in `\text{}`.
+   - prompt: explicit table rules (same rows/columns, `\multicolumn`/`\hline`, keep
+     numbers/dot leaders, translate every cell wrapped in `\text{}`/`\textbf{}`; TOC
+     pages keep page numbers).
+2. **Long narrow caption columns.** Captions were rendered inside the (narrow) figure
+   minipage, so long captions wrapped into a tall thin column. `_figure_row_tex` now
+   renders images side by side and puts the captions **full width below the row**
+   (labelled `(a)`, `(b)` when multiple).
+
+Tests: +6. **414 passed** + 2 live. Also fixed a `{0.100}\textwidth}` typo.
+
+---
+
+## Session: UI stuck at "finalizing" (no download link)
+
+The book UI froze at `finalizing` with all chunks done and no link; the job was actually
+**done** in the DB with its artifact. Cause (frontend): `running = status in (queued,
+running)` drove the polling/SSE effect, so once the book moved to **`finalizing`** polling
+stopped and the finished artifact never appeared. Fix: `jobActive = queued|running|
+finalizing` drives the timer + polling; show "finalizing — assembling the merged PDF…".
+
+Also hardened `books._finalize`: wrapped end-to-end so any error marks the book `failed`
+(never stuck in finalizing); `_has_page` recognises split parts (`p01-2.pdf`);
+`recover()` resets books stuck in `finalizing` back to `running`.
+
+Tests: +4. **409 passed** + 2 live.
+
+---
+
+## Session: queue whole books (batch of books)
+
+`POST /api/batch` only created `kind="single"` children and the UI's queue mode overrode
+book mode, so whole books could not be queued. Added `BatchCreate.book`/`chunk_size`;
+`create_batch(book=True)` makes each document a durable `kind="book"` **child**
+(`books.create_book` takes `parent_id`/`status`) with chunks. `BatchDispatcher._run_child`
+hands a book child to the `BookDispatcher` (marks it running, does not run pages itself);
+recovery leaves book children alone; cancel cancels their queued chunks. UI: queue + book
+mode sends `book:true`. Tests: +6 incl. a 2-book end-to-end integration. **405 passed**.
+
+---
+
 ## Session: book stays at 0/N, disk full, resume
 
 Three fixes:
