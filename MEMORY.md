@@ -3,6 +3,31 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: multi-document sequential batches
+
+Added `app/batch.py` (`create_batch` + `BatchDispatcher`) and UI/API support for
+selecting several documents and translating them **one after another**.
+
+- Data model: a `kind="batch"` parent job owns `kind="single"` child jobs
+  (`parent_id` = batch id, ordered by `config._batch_index`). No new table.
+- Dispatcher: thread + `ThreadPoolExecutor(batch_concurrency)` (default **1** = strictly
+  sequential). Runs a child synchronously via new `JobRunner.run_now`. Recovers orphaned
+  running children on start; finalizes the batch (progress/cost/status) when all children
+  are terminal; partial failure -> `done` + error, all failed -> `failed`.
+- Guards: batch **children are excluded** from `session_jobs` (the parent counts as the
+  one active job). `_recover_orphaned_jobs` skips children (the batch dispatcher handles
+  them).
+- API: `POST /api/batch` (`BatchCreate(JobCreate){document_ids}`),
+  `GET /api/jobs/{id}/children`, cancel handles `kind="batch"`.
+- UI: "queue multiple documents" checkbox + document checklist; batch progress table.
+- Output names: `NN <stem> (<target>).pdf` per child (unique, ordered).
+
+Tests: `tests/test_batch.py` (9) + 2 API tests. Live audit: 2 docs (3+2 pages) ->
+max 1 concurrent child, both done in English, batch done, ~$0.0018. Total: **313 passed**
+(+2 live).
+
+---
+
 ## Session: thorough book-pipeline testing (+ fixes)
 
 Added ~14 focused tests in `tests/test_books.py` (scheduler concurrency cap, no

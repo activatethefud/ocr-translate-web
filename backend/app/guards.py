@@ -43,9 +43,10 @@ def _now() -> datetime:
 
 
 def session_jobs(s, session_id: str) -> list[db.Job]:
-    # session id lives in job.config (set at creation)
+    # session id lives in job.config (set at creation). Child jobs of a batch are
+    # internal -> the batch parent is the one that counts against the limits.
     rows = s.execute(select(db.Job)).scalars().all()
-    return [j for j in rows if (j.config or {}).get("session_id") == session_id]
+    return [j for j in rows if (j.config or {}).get("session_id") == session_id and not j.parent_id]
 
 
 def config_fingerprint(cfg: dict) -> str:

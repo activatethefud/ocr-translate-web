@@ -48,6 +48,11 @@ class JobRunner:
         self.tokens[job_id] = CancelToken()
         self.pool.submit(self._run, job_id, api_key)
 
+    def run_now(self, job_id: str, api_key: str | None) -> None:
+        """Run a job synchronously in the *calling* thread (used by batches)."""
+        self.tokens[job_id] = CancelToken()
+        self._run(job_id, api_key)
+
     def cancel(self, job_id: str) -> bool:
         token = self.tokens.get(job_id)
         if token:

@@ -88,6 +88,18 @@ When you translate a **page selection** (e.g. `10,15,20`), the default is to **o
 unselected pages (`unprocessed=skip`), so only those pages appear. Switch to
 **keep original page** to keep the whole document with just the chosen pages translated.
 
+## Multiple documents (sequential batches)
+
+Tick **queue multiple documents** and select any number of documents; they are
+processed **one after another** (never in parallel) with one shared config. Each
+document gets its own child job, events, progress and artifact, named `NN <name>
+(<target>).pdf`; the batch page shows a per-document table. Because each document has
+its own cache, re-queuing a document is free where it is unchanged.
+
+API: `POST /api/batch` (`{document_ids, ...JobCreate}`) → a `kind="batch"` job;
+`GET /api/jobs/{id}/children` lists the child jobs; `POST /api/jobs/{id}/cancel`
+cancels the batch. A restart re-queues only the interrupted document.
+
 ## License
 
 GPL-3.0-or-later — see [LICENSE](LICENSE).

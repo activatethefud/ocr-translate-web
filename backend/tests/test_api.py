@@ -290,3 +290,25 @@ def test_book_api_subset_translated_only(client, tiny_pdf):
     assert body["mode"] == "translated_only"
     chunks = client.get(f"/api/jobs/{body['id']}/chunks").json()
     assert [(c["page_from"], c["page_to"]) for c in chunks] == [(2, 2)]
+
+
+def test_batch_api_creates_children_in_order(client, tiny_pdf):
+    d1 = _upload(client, tiny_pdf).json()
+    d2 = _upload(client, tiny_pdf).json()
+    r = client.post(
+        "/api/batch",
+        json={"target_lang": "French", "document_ids": [d1["id"], d2["id"]], "pages": "1-1"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["kind"] == "batch"
+    children = client.get(f"/api/jobs/{body['id']}/children").json()
+    assert [c["document_id"] for c in children] == [d1["id"], d2["id"]]
+    assert [c["total_pages"] for c in children] == [1, 1]
+    # a batch can be canceled
+    assert client.post(f"/api/jobs/{body['id']}/cancel").json()["ok"] is True
+
+
+def test_batch_api_rejects_empty(client, tiny_pdf):
+    r = client.post("/api/batch", json={"target_lang": "French", "document_ids": []})
+    assert r.status_code == 422

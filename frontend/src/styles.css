@@ -64,3 +64,7 @@ table.chunks th, table.chunks td { text-align: left; padding: 4px 6px; border-bo
 .block-list { margin: 6px 0 0 18px; padding: 0; }
 .block-list.ordered { list-style: decimal; }
 .block-list:not(.ordered) { list-style: disc; }
+
+.doclist { max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 8px; margin: 4px 0; display: flex; flex-direction: column; gap: 4px; }
+.doclist label.check { font-size: 13px; }

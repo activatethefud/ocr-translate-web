@@ -23,9 +23,11 @@ from ocrtran.cache import load_json, save_json
 from ocrtran.pages import PageSpecError, parse_page_spec
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
+from . import batch as batch_mod
 from . import books, db, guards, learning, ratelimit, storage
 from .runner import JobRunner
 from .schemas import (
+    BatchCreate,
     BlockOut,
     BlockPatch,
     BlockReorder,
@@ -61,9 +63,12 @@ async def lifespan(app: FastAPI):
     )
     app.state.dispatcher = books.BookDispatcher(settings)
     app.state.dispatcher.start()
+    app.state.batch = batch_mod.BatchDispatcher(settings, runner=app.state.runner)
+    app.state.batch.start()
     try:
         yield
     finally:
+        app.state.batch.stop()
         app.state.dispatcher.stop()
         app.state.runner.shutdown()
 
@@ -97,13 +102,23 @@ def _dispatcher() -> books.BookDispatcher:
     return app.state.dispatcher
 
 
+def _batch() -> batch_mod.BatchDispatcher:
+    return app.state.batch
+
+
 def _recover_orphaned_jobs() -> None:
     """Single jobs are in-process; after a restart mark them failed (book chunks are
     recovered by the dispatcher and resume from the cache)."""
     s = db.get_session()
     try:
         rows = (
-            s.execute(select(db.Job).where(db.Job.kind == "single", db.Job.status.in_(("queued", "running"))))
+            s.execute(
+                select(db.Job).where(
+                    db.Job.kind == "single",
+                    db.Job.parent_id.is_(None),  # batch children are recovered by the batch dispatcher
+                    db.Job.status.in_(("queued", "running")),
+                )
+            )
             .scalars()
             .all()
         )
@@ -521,13 +536,16 @@ def cancel_job(job_id: str):
         job = s.get(db.Job, job_id)
         if not job:
             raise HTTPException(404, "job not found")
-        is_book = job.kind == "book"
-        if is_book:
+        kind = job.kind
+        if kind == "book":
             job.status = "canceled"
             s.commit()
     finally:
         s.close()
-    if is_book:
+    if kind == "batch":
+        _batch().cancel(job_id)
+        return OkOut(ok=True, detail="batch canceled")
+    if kind == "book":
         _dispatcher().wake()
         return OkOut(ok=True, detail="book canceled")
     ok = _runner().cancel(job_id)
@@ -796,6 +814,70 @@ def usage():
             completion_tokens=sum(u.completion_tokens for u in rows),
             calls=sum(u.calls for u in rows),
         )
+    finally:
+        s.close()
+
+
+# --------------------------------------------------------------------------
+# batch jobs (several documents, processed sequentially)
+# --------------------------------------------------------------------------
+@app.post("/api/batch", response_model=JobOut)
+def create_batch_endpoint(
+    body: BatchCreate,
+    settings: Settings = Depends(_settings_dep),
+    sid: str = Depends(_session_id),
+):
+    if not body.document_ids:
+        raise HTTPException(422, "document_ids is empty")
+    s = db.get_session()
+    try:
+        docs: list[db.Document] = []
+        seen: set[str] = set()
+        for did in body.document_ids:
+            doc = s.get(db.Document, did)
+            if not doc:
+                raise HTTPException(404, f"document not found: {did}")
+            if doc.id not in seen:  # de-dupe, keep order
+                seen.add(doc.id)
+                docs.append(doc)
+        provided_key = (body.api_key or "").strip()
+        if provided_key:
+            row = _get_session(s, sid)
+            row.api_key_enc = get_cipher(settings).encrypt(provided_key)
+            api_key = provided_key
+        else:
+            row = s.get(db.Session, sid)
+            api_key = get_cipher(settings).decrypt(row.api_key_enc) if row else None
+        if not api_key and settings.server_key_allowed:
+            api_key = os.environ.get(settings.api_key_env)
+        if not api_key:
+            raise HTTPException(
+                400, "BYOK required: send an api_key with the request or save one for this session"
+            )
+        cfg = body.model_dump()
+        cfg.pop("api_key", None)
+        cfg.pop("document_ids", None)
+        cfg["model"] = body.model or settings.default_model
+        cfg["concurrency"] = body.concurrency or settings.page_concurrency
+        cfg["output_name"] = (body.output_name or "").strip()  # per-child names are derived
+        guards.enforce_submit(s, settings, sid)
+        job = batch_mod.create_batch(s, settings, docs, cfg, session_id=sid)
+        out = _job_out(s, job)
+    finally:
+        s.close()
+    _batch().wake()
+    return out
+
+
+@app.get("/api/jobs/{job_id}/children", response_model=list[JobOut])
+def job_children(job_id: str):
+    s = db.get_session()
+    try:
+        if not s.get(db.Job, job_id):
+            raise HTTPException(404, "job not found")
+        rows = s.execute(select(db.Job).where(db.Job.parent_id == job_id)).scalars().all()
+        rows.sort(key=lambda j: (j.config or {}).get("_batch_index", 0))
+        return [_job_out(s, j) for j in rows]
     finally:
         s.close()
 

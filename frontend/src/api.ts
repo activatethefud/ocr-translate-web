@@ -147,6 +147,10 @@ export interface BookCreate extends JobCreate {
   to_page?: number;
 }
 
+export interface BatchCreate extends JobCreate {
+  document_ids: string[];
+}
+
 export interface JobCreate {
   source_lang: string;
   target_lang: string;
@@ -223,6 +227,11 @@ export const api = {
 
   createBook: (docId: string, body: BookCreate) =>
     fetch(`/api/documents/${docId}/book`, json(body)).then(j<JobOut>),
+
+  createBatch: (body: BatchCreate) => fetch("/api/batch", json(body)).then(j<JobOut>),
+
+  children: (jobId: string) =>
+    fetch(`/api/jobs/${jobId}/children`, { headers: headers() }).then(j<JobOut[]>),
 
   chunks: (jobId: string) =>
     fetch(`/api/jobs/${jobId}/chunks`, { headers: headers() }).then(j<Chunk[]>),

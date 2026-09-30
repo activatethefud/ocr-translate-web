@@ -91,6 +91,19 @@ skip themselves when `xelatex` is missing.
 **Live audit** (`backend/tools/` style): run two books over the same document with
 *different* `chunk_size`; the second must cost **$0.00000** (fully cache-served).
 
+### 5. Multi-document batches (no network)
+`backend/tests/test_batch.py` covers sequential batches:
+- `create_batch`: one ordered child per document, page counts per doc, unique
+  `NN <name> (<target>)` output names, parent kind/status/total.
+- dispatcher: strict document order, **max one child running at a time**, progress and
+  cost aggregation, partial-failure (`done` + error listing failed docs), all-failed
+  (`failed`), `recover()` re-queues running children, `cancel()` cancels the rest.
+- guards: children of a batch do **not** count against session limits (the parent does).
+- API: `POST /api/batch` creates ordered children; `.../children`; cancel; empty list 422.
+
+**Live audit**: two documents (3 + 2 pages) via `BatchDispatcher` with the real model ->
+`max concurrent children = 1`, both `done`, English output, batch `done`, ~$0.0018.
+
 ## Failure injection (must not crash the job)
 
 Drive these through the fake provider / small PDFs and assert graceful handling:

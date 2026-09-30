@@ -135,6 +135,9 @@ export function App() {
   const [bookMode, setBookMode] = useState(false);
   const [chunkSize, setChunkSize] = useState(25);
   const [chunks, setChunks] = useState<Chunk[]>([]);
+  const [queueMode, setQueueMode] = useState(false);
+  const [batchDocs, setBatchDocs] = useState<string[]>([]);
+  const [children, setChildren] = useState<JobOut[]>([]);
   const [sessionHasKey, setSessionHasKey] = useState(false);
   const [sessionHint, setSessionHint] = useState("");
   const [stage, setStage] = useState("");
@@ -197,6 +200,7 @@ export function App() {
     setJob(j);
     if (j.status !== "queued") setPages(await api.pages(j.id));
     if (j.kind === "book") setChunks(await api.chunks(j.id));
+    if (j.kind === "batch") setChildren(await api.children(j.id));
     if (j.status === "done") {
       api.report(j.id).then(setReport).catch(() => undefined);
       api.usage().then(setUsage).catch(() => undefined);
@@ -228,13 +232,18 @@ export function App() {
     try {
       const d = await api.upload(file);
       setDoc(d);
+      if (queueMode) setBatchDocs((prev) => (prev.includes(d.id) ? prev : [...prev, d.id]));
       setDocs(await api.listDocuments());
       setJob(null); setPages([]); setEvents([]); setReport(null);
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
 
   async function onStart() {
-    if (!doc) return;
+    if (queueMode) {
+      if (!batchDocs.length) { setError("Select at least one document to queue"); return; }
+    } else if (!doc) {
+      return;
+    }
     if (!targetLang.trim()) { setError("Please choose or type a target language"); return; }
     setError(""); setBusy(true);
     if (apiKey) sessionStorage.setItem("ocr_key", apiKey);
@@ -255,10 +264,12 @@ export function App() {
       output_name: outputName.trim() || undefined,
     };
     try {
-      const j = bookMode
-        ? await api.createBook(doc.id, { ...body, chunk_size: chunkSize })
-        : await api.createJob(doc.id, body);
-      setJob(j); setEvents([]); setPages([]); setReport(null); setChunks([]);
+      const j = queueMode
+        ? await api.createBatch({ ...body, document_ids: batchDocs })
+        : bookMode && doc
+          ? await api.createBook(doc.id, { ...body, chunk_size: chunkSize })
+          : await api.createJob(doc!.id, body);
+      setJob(j); setEvents([]); setPages([]); setReport(null); setChunks([]); setChildren([]);
       if (apiKey) setSessionHasKey(true);
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
@@ -334,6 +345,25 @@ export function App() {
             <option value="">— history —</option>
             {docs.map((d) => <option key={d.id} value={d.id}>{d.filename}</option>)}
           </select>
+          <label className="check">
+            <input type="checkbox" checked={queueMode}
+                   onChange={(e) => setQueueMode(e.target.checked)} />
+            queue multiple documents (processed one after another)
+          </label>
+          {queueMode && (
+            <div className="doclist">
+              {docs.length === 0 && <p className="muted">Upload or pick documents above.</p>}
+              {docs.map((d) => (
+                <label key={d.id} className="check">
+                  <input type="checkbox" checked={batchDocs.includes(d.id)}
+                         onChange={(e) =>
+                           setBatchDocs((prev) =>
+                             e.target.checked ? [...prev, d.id] : prev.filter((x) => x !== d.id))} />
+                  {d.filename} <span className="muted">· {d.n_pages}p</span>
+                </label>
+              ))}
+            </div>
+          )}
           {doc && (
             <p className="muted">
               {doc.n_pages} pages · {Math.round(doc.page_w)}×{Math.round(doc.page_h)} pt · {doc.kind}
@@ -497,8 +527,11 @@ export function App() {
                      onChange={(e) => setChunkSize(Math.max(1, Number(e.target.value) || 1))} />
             </label>
           )}
-          <button disabled={!doc || busy || !!running} onClick={onStart}>
-            {bookMode ? "Start book job" : "Start job"}
+          <button disabled={(queueMode ? batchDocs.length === 0 : !doc) || busy || !!running}
+                  onClick={onStart}>
+            {queueMode
+              ? `Start batch (${batchDocs.length} document${batchDocs.length === 1 ? "" : "s"})`
+              : bookMode ? "Start book job" : "Start job"}
           </button>
         </section>
 
@@ -532,6 +565,28 @@ export function App() {
                 <a key={a.id} className="download" href={a.download_url}>⬇ {a.filename}</a>
               ))}
               <pre className="log">{events.join("\n")}</pre>
+              {job.kind === "batch" && (
+                <>
+                  <div className="row spread">
+                    <b>Documents</b>
+                    <span className="muted">{children.filter((c) => c.status === "done").length}/{children.length} done</span>
+                  </div>
+                  <table className="chunks">
+                    <thead><tr><th>#</th><th>Document</th><th>State</th><th>Pages</th><th>Cost</th></tr></thead>
+                    <tbody>
+                      {children.map((c, i) => (
+                        <tr key={c.id}>
+                          <td>{i + 1}</td>
+                          <td>{docs.find((d) => d.id === c.document_id)?.filename ?? c.document_id}</td>
+                          <td>{c.status}{c.error ? " ⚠" : ""}</td>
+                          <td>{c.done_pages}/{c.total_pages}</td>
+                          <td>{c.cost_usd > 0 ? `$${c.cost_usd.toFixed(4)}` : ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
               {job.kind === "book" && (
                 <>
                   <div className="row spread">

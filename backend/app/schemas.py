@@ -158,6 +158,12 @@ class BoundaryItem(BaseModel):
     title: str
 
 
+class BatchCreate(JobCreate):
+    """Translate several documents sequentially with one shared config."""
+
+    document_ids: list[str]
+
+
 class ChunkOut(BaseModel):
     id: str
     idx: int
