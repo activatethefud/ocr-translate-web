@@ -19,7 +19,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from ocrtran import annotate, cache, latex, ocr, paths, pricing
+from ocrtran import annotate, cache, guard, latex, ocr, paths, pricing
 from ocrtran import assemble as assemble_mod
 from ocrtran.config import PipelineConfig
 from ocrtran.jsonutil import parse_json_list
@@ -251,6 +251,7 @@ class BookDispatcher:
             results = ocr.run_ocr(cfg, provider, on_event=on_progress)
             annotate.run_annotate(cfg, provider, results)
             latex.run_build(cfg, results, on_event=on_progress)
+            guard.run_guard(cfg, provider, results, on_event=on_progress)
             self._collect_pages(cfg, book_config, doc_id, book_id, chunk_range)
             usage = getattr(provider, "usage", {}) or {}
             cost = pricing.cost_usd(

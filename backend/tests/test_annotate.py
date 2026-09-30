@@ -116,3 +116,23 @@ def test_find_text_spans_bare_cells_are_whole_phrases():
 
     spans = find_text_spans(r"a & Облик тела & b \\", include_bare=True)
     assert "Облик тела" in [t[2] for t in spans]
+
+
+def test_annotate_translates_theorem_name():
+    blocks = [{"type": "theorem", "kind": "Definition", "name": "Описна дефиниција", "target": "x"}]
+    n = annotate_blocks(_CountingProvider(), blocks, "Chinese")
+    assert n == 1  # name counted + translated (identity provider keeps it)
+    assert blocks[0]["name"] == "Описна дефиниција"
+
+
+def test_is_source_text_detects_short_words_and_abbreviations():
+    assert is_source_text("Сл. 7")  # figure label
+    assert is_source_text("и")
+    assert is_source_text("за")
+    assert not is_source_text("x")
+    assert not is_source_text("frac")
+
+
+def test_annotate_translates_a_short_figure_label():
+    blocks = [{"type": "figure", "caption": "Сл. 7"}]
+    assert annotate_blocks(_CountingProvider(), blocks, "Chinese") == 1

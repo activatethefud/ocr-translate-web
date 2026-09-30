@@ -172,6 +172,7 @@ export interface JobCreate {
   do_not_translate?: string[];
   llm_instructions?: string;
   verify_math?: boolean;
+  error_guard?: "off" | "auto";
   pages?: string;
   unprocessed?: "original" | "skip";
   output_page_size?: "match" | "a4" | "letter";

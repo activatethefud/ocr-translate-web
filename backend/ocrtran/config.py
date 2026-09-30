@@ -49,6 +49,7 @@ class PipelineConfig:
     do_not_translate: list[str] = field(default_factory=list)
     llm_instructions: str = ""
     verify_math: bool = False
+    error_guard: str = "auto"  # off | auto: LLM decides what to do with a failed page
     font_main: str = "Noto Serif"
     fallback_font: str = ""  # for letters the main font lacks (auto: Noto Serif for CJK)
     linebreak_locale: str = ""
@@ -152,6 +153,8 @@ class PipelineConfig:
             raise ConfigError("figure_format must be auto, png or jpeg")
         if not (1 <= self.jpeg_quality <= 100):
             raise ConfigError("jpeg_quality must be between 1 and 100")
+        if self.error_guard not in ("off", "auto"):
+            raise ConfigError("error_guard must be 'off' or 'auto'")
         if self.figure_mode not in ("off", "tight", "judge"):
             raise ConfigError("figure_mode must be off, tight or judge")
         if self.layout_mode not in ("single", "auto"):

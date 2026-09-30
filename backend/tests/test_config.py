@@ -140,3 +140,10 @@ def test_combine_translated_only_direct():
     assert cfg.validate() is None
     cfg2 = PipelineConfig.from_dict({"sources": ["a.pdf"], "combine": "translated_only"})
     assert cfg2.output_mode == "translated_only"
+
+
+def test_error_guard_validation():
+    assert PipelineConfig(sources=["a.pdf"]).error_guard == "auto"
+    assert PipelineConfig(sources=["a.pdf"], error_guard="off").error_guard == "off"
+    with pytest.raises(ConfigError):
+        PipelineConfig(sources=["a.pdf"], error_guard="nope").validate()

@@ -49,6 +49,7 @@ class JobCreate(BaseModel):
     do_not_translate: list[str] = []
     llm_instructions: str = ""
     verify_math: bool = False
+    error_guard: Literal["off", "auto"] = "auto"
     # page control
     pages: str = "all"
     unprocessed: Literal["original", "skip"] = "skip"

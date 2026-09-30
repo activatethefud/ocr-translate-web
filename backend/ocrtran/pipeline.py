@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import assemble as assemble_mod
-from . import latex, ocr, verify
+from . import guard, latex, ocr, verify
 from .annotate import run_annotate
 from .config import PipelineConfig
 from .events import Canceled, CancelToken, Emitter, Event, emit
@@ -75,6 +75,8 @@ class Pipeline:
             result.ocr = self.run_ocr()
             self.run_annotate(result.ocr)
             self.run_build(result.ocr)
+            if self.cfg.error_guard == "auto":
+                guard.run_guard(self.cfg, self.provider, result.ocr, self.on_event, self.cancel)
             if self.cfg.verify_math:
                 verify.run_math_check(self.cfg, self.provider, result.ocr, self.on_event, self.cancel)
             result.outputs = self.run_assemble()

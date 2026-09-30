@@ -19,7 +19,7 @@ from pathlib import Path
 
 import fitz
 
-from . import paths
+from . import cache, paths
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
 from .pages import parse_page_spec
@@ -99,6 +99,16 @@ def assemble(
     for si, source in enumerate(cfg.resolve_sources()):
         cancel.check()
         base = Path(source).stem
+        # the error guard records what to do with pages that failed to typeset
+        guard: dict[int, str] = {}
+        for e in cache.load_json(paths.ocr_json(cfg.workdir, base)) or []:
+            act = (e.get("guard") or {}).get("action")
+            if act:
+                guard[int(e.get("page") or 0)] = act
+
+        def skip(p: int, _guard=guard) -> bool:
+            return _guard.get(p) == "skip"
+
         src = fitz.open(source)
         out = fitz.open()
         n = src.page_count
@@ -120,6 +130,8 @@ def assemble(
             for i in range(n):
                 p = i + 1
                 if p in selected:
+                    if skip(p):  # guard said drop this page
+                        continue
                     mark(p)
                     _add_original(out, src, i)
                     _add_translation(out, src, cfg, base, p, size, area)
@@ -129,14 +141,20 @@ def assemble(
         elif mode == "grouped":
             orig_pages = range(n) if keep_unselected else [p - 1 for p in selected]
             for i in orig_pages:
+                if (i + 1) in selected and skip(i + 1):
+                    continue
                 mark(i + 1)
                 _add_original(out, src, i)
             for p in selected:
+                if skip(p):
+                    continue
                 if p not in src_first:
                     mark(p)
                 _add_translation(out, src, cfg, base, p, size, area)
         elif mode == "translated_only":
             for p in selected:
+                if skip(p):
+                    continue
                 mark(p)
                 _add_translation(out, src, cfg, base, p, size, area, fallback=True)
         elif mode == "side_by_side":
@@ -146,6 +164,8 @@ def assemble(
             for i in range(n):
                 p = i + 1
                 if p in selected:
+                    if skip(p):
+                        continue
                     mark(p)
                     page = out.new_page(width=outW, height=outH)
                     _place(page, src, i, left, _eff_max_scale(cfg))  # original left

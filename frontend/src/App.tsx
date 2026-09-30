@@ -125,6 +125,7 @@ export function App() {
   const [doNotTranslate, setDoNotTranslate] = useState("");
   const [llmInstructions, setLlmInstructions] = useState("");
   const [verifyMath, setVerifyMath] = useState(false);
+  const [errorGuard, setErrorGuard] = useState<"off" | "auto">("auto");
   const [pagesSpec, setPagesSpec] = useState("all");
   const [unprocessed, setUnprocessed] = useState<"original" | "skip">("skip");
   const [outputPageSize, setOutputPageSize] = useState<"match" | "a4" | "letter">("match");
@@ -264,6 +265,7 @@ export function App() {
       do_not_translate: doNotTranslate.split(",").map((s) => s.trim()).filter(Boolean),
       llm_instructions: llmInstructions,
       verify_math: verifyMath,
+      error_guard: errorGuard,
       pages: pagesSpec,
       unprocessed,
       output_page_size: outputPageSize,
@@ -455,6 +457,12 @@ export function App() {
           <label className="check">
             <input type="checkbox" checked={verifyMath} onChange={(e) => setVerifyMath(e.target.checked)} />
             verify formulas (+1 model call per page)
+          </label>
+          <label>If a page fails
+            <select value={errorGuard} onChange={(e) => setErrorGuard(e.target.value as "off" | "auto")}>
+              <option value="auto">LLM guard — repair / keep original / skip</option>
+              <option value="off">keep original (old behaviour)</option>
+            </select>
           </label>
           <h2>Page control</h2>
           <label>Pages (blank = all)

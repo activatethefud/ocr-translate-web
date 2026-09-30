@@ -167,3 +167,40 @@ def test_assemble_interleave_with_parts(tiny_pdf, tmp_path):
     out = fitz.open(assemble.assemble(cfg)[base])
     assert out.page_count == 5  # orig1 + 2 parts + orig2 + 1 part
     out.close()
+
+
+def test_assemble_skips_guard_pages(tiny_pdf, tmp_path):
+    """A page the error guard decided to skip is omitted from the output."""
+    from ocrtran import cache
+
+    workdir = tmp_path / "work"
+    base = tiny_pdf.stem
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)], workdir=str(workdir), combine="translated_only", bilingual=False
+    )
+    make_translated_page(paths.page_pdf(workdir, base, 1), "A")
+    make_translated_page(paths.page_pdf(workdir, base, 2), "C")
+    cache.save_json(
+        paths.ocr_json(workdir, base),
+        [{"page": 1, "blocks": []}, {"page": 2, "blocks": [], "guard": {"action": "skip"}}],
+    )
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 1  # page 2 dropped
+    out.close()
+
+
+def test_assemble_guard_skip_omits_original_too(tiny_pdf, tmp_path):
+    from ocrtran import cache
+
+    workdir = tmp_path / "work"
+    base = tiny_pdf.stem
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(workdir), combine="interleave", bilingual=True)
+    make_translated_page(paths.page_pdf(workdir, base, 1), "A")
+    make_translated_page(paths.page_pdf(workdir, base, 2), "C")
+    cache.save_json(
+        paths.ocr_json(workdir, base),
+        [{"page": 1, "blocks": []}, {"page": 2, "blocks": [], "guard": {"action": "skip"}}],
+    )
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 2  # page 1 (orig+tr); page 2 dropped entirely
+    out.close()

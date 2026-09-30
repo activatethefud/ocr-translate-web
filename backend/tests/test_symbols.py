@@ -176,3 +176,50 @@ def test_bare_sqrt_compiles_and_has_no_literal_backslash(tiny_pdf, tmp_path, xel
         text = d[0].get_text()
     assert "\\sqrt" not in text and "\\frac" not in text and "\\cdot" not in text
     assert "289" in text and "17" in text
+
+
+def test_tag_and_european_shorthand_compile(tiny_pdf, tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)],
+        workdir=str(tmp_path / "w"),
+        layout_mode="single",
+        output_page_size="a4",
+        target_lang="French",
+    )
+    entry = {
+        "page": 1,
+        "tight": [],
+        "blocks": [
+            {"type": "math", "latex": r"y = \tg x \tag{1}"},
+            {"type": "prose", "target": r"the tangent $\tg x$"},
+        ],
+    }
+    latex.run_build(cfg, {tiny_pdf.stem: [entry]})
+    assert paths.page_pdfs(cfg.workdir, tiny_pdf.stem, 1)
+    log = (paths.tex_dir(cfg.workdir, tiny_pdf.stem) / "p01.log").read_text(errors="ignore")
+    assert "Error" not in log
+
+
+def test_inline_tag_becomes_number():
+    assert esc(r"$f = x \tag{1}$") == r"$f = x \qquad (1)$"
+
+
+def test_display_environment_in_prose_is_kept_as_math():
+    out = esc(r"因为 \begin{equation} f$\left$($\frac{a}{b}$)\tag{2}\end{equation} 成立")
+    assert "\\begin{equation}" in out and "\\end{equation}" in out
+    assert "\\textbackslash" not in out
+    assert "$\\left$" not in out  # stray $ inside the environment removed
+    assert "\\left(" in out
+
+
+def test_align_environment_in_prose_is_kept():
+    out = esc(r"x \begin{align} a &= 1 \\ b &= 2 \end{align} y")
+    assert out == r"x \begin{align} a &= 1 \\ b &= 2 \end{align} y"
+
+
+def test_double_struck_letters_mapped():
+    assert esc("ℝ") == "$\\mathbb{R}$"
+    assert esc("x ∈ ℕ") == "x $\\in$ $\\mathbb{N}$"
+    assert esc("$A \\subseteq \\mathbb{Z}$") == "$A \\subseteq \\mathbb{Z}$"

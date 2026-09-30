@@ -51,7 +51,42 @@ LATEX_KEYWORDS = {
     "vspace",
 }
 # Latin / Latin-Extended / Cyrillic words (extend for other source scripts).
-WORD = re.compile(r"[A-Za-z\u00C0-\u024F\u0400-\u04FF]{3,}")
+WORD = re.compile(r"[A-Za-z\u00C0-\u024F\u0400-\u04FF]+")
+# very short source-language function words / abbreviations ("и", "за", "сл.")
+SHORT_WORDS = {
+    "и",
+    "у",
+    "о",
+    "а",
+    "за",
+    "на",
+    "од",
+    "до",
+    "са",
+    "је",
+    "су",
+    "не",
+    "ни",
+    "или",
+    "ако",
+    "то",
+    "да",
+    "се",
+    "по",
+    "из",
+    "уз",
+    "код",
+    "под",
+    "над",
+    "сл",
+    "г",
+    "год",
+    "тј",
+    "нпр",
+    "бр",
+    "стр",
+    "век",
+}
 MATH_WORDS = {
     "log",
     "ln",
@@ -114,7 +149,13 @@ def find_text_groups(s: str) -> list[tuple[int, int, str]]:
 
 
 def is_source_text(t: str) -> bool:
-    return any(w.lower() not in MATH_WORDS for w in WORD.findall(t))
+    for w in WORD.findall(t):
+        lw = w.lower()
+        if lw in MATH_WORDS or lw in LATEX_KEYWORDS:
+            continue
+        if len(w) >= 2 or lw in SHORT_WORDS:
+            return True
+    return False
 
 
 def find_text_spans(s: str, include_bare: bool = False) -> list[tuple[int, int, str, int]]:
@@ -191,6 +232,7 @@ def annotate_blocks(provider: Provider, blocks: list[dict], target_lang: str) ->
     """
     work: list[tuple[dict, str, list]] = []
     caps: list[dict] = []
+    names: list[dict] = []
     for b in blocks:
         t = b.get("type")
         if t in ("math", "table"):
@@ -202,10 +244,18 @@ def annotate_blocks(provider: Provider, blocks: list[dict], target_lang: str) ->
             cap = (b.get("caption") or "").strip()
             if cap and is_source_text(cap):
                 caps.append(b)
-    if not work and not caps:
+        elif t == "theorem":
+            nm = (b.get("name") or "").strip()
+            if nm and is_source_text(nm):
+                names.append(b)
+    if not work and not caps and not names:
         return 0
 
-    items = [g[2] for _, _, groups in work for g in groups] + [b["caption"].strip() for b in caps]
+    items = (
+        [g[2] for _, _, groups in work for g in groups]
+        + [b["caption"].strip() for b in caps]
+        + [b["name"].strip() for b in names]
+    )
     tr = _translate_batch(provider, items, target_lang)
     if len(tr) != len(items):
         tr = [_translate_one(provider, it, target_lang) for it in items]
@@ -225,7 +275,10 @@ def annotate_blocks(provider: Provider, blocks: list[dict], target_lang: str) ->
     for b in caps:
         b["caption"] = tr[cursor]
         cursor += 1
-    return len(work) + len(caps)
+    for b in names:
+        b["name"] = tr[cursor]
+        cursor += 1
+    return len(work) + len(caps) + len(names)
 
 
 def run_annotate(

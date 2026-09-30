@@ -191,6 +191,18 @@ contains no `\sqrt`/`\frac`/`\cdot`.
 - Live check: a bare/`\textbf` table annotated with the real model compiles and shows
   translated headers/cells with numbers intact.
 
+### 9g. Error guard + LaTeX robustness
+- `test_guard.py`: `decide` parses actions/patches and defaults by mode (`skip` for
+  translated-only, else `original`); `error_guard="off"` makes no calls; skip/original are
+  saved to `ocr.json`; a repair patches the right field, clears the error, recompiles, and
+  falls back when the repair still fails.
+- `test_assemble.py`: a `skip` decision actually drops the page (including its original).
+- LaTeX robustness: `\tag{}` inside display **and inline** math becomes `\qquad (n)`;
+  `\begin{equation}/align` embedded in prose is kept as real math (stray `$` removed);
+  European shorthands (`\tg \ctg \arctg \tgh \sh \ch`) are defined in the preamble;
+  double-struck/letterlike (`ℝ ℕ ℤ ℓ …`) are mapped to math.
+- `is_source_text` now detects short words/abbreviations (`и`, `за`, `Сл. 7`).
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

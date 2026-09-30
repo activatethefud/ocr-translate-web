@@ -41,7 +41,7 @@ Rules:
 - "heading": set "level" (1 = document/chapter title, 2 = section, 3 = subsection).
 - "math": standalone/display equations; set "number" (e.g. "(1)") only if numbered.
 - "theorem": use for theorem/definition/example/proof/lemma/proposition/remark
-  environments; set "kind" and, when named, "name".
+  environments; set "kind" and, when named, "name" (translate "name" into __TGT__).
 - NEVER translate or alter mathematics; keep every symbol identical.
 - Reproduce every formula exactly: fractions, roots, exponents, subscripts,
   matrices, set notation, vectors. Use standard amsmath.
@@ -61,6 +61,8 @@ Rules:
   translate it or convert the digits, and do not also include it as prose. If there is
   no page number on the page, do not add this block.
 - For figures give an accurate tight "bbox" and, if present, a "caption".
+- Translate EVERY word, including short connectors ("и", "за", "на", ...) and figure
+  labels ("сл. 7"); never leave __SRC__ words in any "target", "caption" or "name".
 - Return only the JSON.
 """
 

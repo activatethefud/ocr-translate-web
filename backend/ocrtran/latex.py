@@ -180,6 +180,22 @@ SYMBOL_TO_MATH = {
     "′": r"^\prime",
     "″": r"^{\prime\prime}",
     "µ": r"\textmu",
+    # letterlike symbols (double-struck, script) the prose fonts lack
+    "ℝ": r"\mathbb{R}",
+    "ℕ": r"\mathbb{N}",
+    "ℤ": r"\mathbb{Z}",
+    "ℚ": r"\mathbb{Q}",
+    "ℂ": r"\mathbb{C}",
+    "ℙ": r"\mathbb{P}",
+    "ℍ": r"\mathbb{H}",
+    "𝔽": r"\mathbb{F}",
+    "ℓ": r"\ell",
+    "ℏ": r"\hbar",
+    "ℑ": r"\Im",
+    "ℜ": r"\Re",
+    "℘": r"\wp",
+    "ℵ": r"\aleph",
+    "ℶ": r"\beth",
 }
 # text (non-math) replacements
 TEXT_REPL = {
@@ -323,6 +339,9 @@ def _scan_math_command(seg: str, i: int) -> str | None:
     return seg[i:j]
 
 
+_ENV_HEAD = re.compile(r"\\begin\{([A-Za-z]+\*?)\}")
+
+
 def _map_text(seg: str, fallback: str) -> str:
     seg = "".join(c for c in seg if ord(c) >= 32 or c in "\t")
     seg = seg.replace("\\{", "{").replace("\\}", "}")  # un-escape set braces
@@ -331,6 +350,17 @@ def _map_text(seg: str, fallback: str) -> str:
     while i < len(seg):
         ch = seg[i]
         if ch == "\\":
+            # the model sometimes embeds a display-math environment in prose; keep it
+            # as real math and drop stray $ inside it (e.g. $\left$ -> \left)
+            em = _ENV_HEAD.match(seg, i)
+            if em and em.group(1) in DISPLAY_ENVS:
+                endtok = "\\end{" + em.group(1) + "}"
+                end = seg.find(endtok, em.end())
+                if end != -1:
+                    end += len(endtok)
+                    out.append(seg[i:end].replace("$", ""))
+                    i = end
+                    continue
             span = _scan_math_command(seg, i)
             if span:
                 out.append("$" + _map_math(span, fallback) + "$")
@@ -363,22 +393,53 @@ def _map_math(seg: str, fallback: str = "") -> str:
             out.append("{}^{" + SUPERSCRIPTS[ch] + "}")
         else:
             out.append(ch)
-    return textify_math("".join(out), fallback)
+    return textify_math(strip_tags("".join(out)), fallback)
+
+
+# a display-math environment embedded in prose (may itself contain stray "$")
+_ENV_BLOCK = re.compile(
+    r"\\begin\{(" + "|".join(re.escape(e) for e in DISPLAY_ENVS) + r")\}.*?\\end\{\1\}",
+    re.S,
+)
+_ENV_TOKEN = "@@OCRtranENV{}@@"
+
+
+def _stash_envs(s: str) -> tuple[str, list[str]]:
+    envs: list[str] = []
+
+    def repl(m: re.Match) -> str:
+        envs.append(m.group(0).replace("$", ""))  # it is already math; drop stray $
+        return _ENV_TOKEN.format(len(envs) - 1)
+
+    return _ENV_BLOCK.sub(repl, s), envs
 
 
 def esc_text(s: str, fallback: str = "") -> str:
     """Escape LaTeX specials outside ``$...$``; map symbols/sub-superscripts.
 
     ``fallback`` is a font family used for letters the main font lacks (e.g. Cyrillic
-    under a CJK font); empty means no fallback.
+    under a CJK font); empty means no fallback. Display-math environments embedded in
+    prose are kept as real math.
     """
+    s, envs = _stash_envs(s)
     parts, out = s.split("$"), []
     for i, seg in enumerate(parts):
         if i % 2 == 1:
             out.append("$" + _map_math(seg, fallback) + "$")
         else:
             out.append(_map_text(seg, fallback))
-    return "".join(out)
+    text = "".join(out)
+    for i, env in enumerate(envs):
+        text = text.replace(_ENV_TOKEN.format(i), env)
+    return text
+
+
+_TAG = re.compile(r"\\tag\*?\{([^{}]*)\}")
+
+
+def strip_tags(lx: str) -> str:
+    """``\\tag{1}`` is invalid inside ``\\[ ... \\]``; turn it into ``\\qquad (1)``."""
+    return _TAG.sub(lambda m: "\\qquad (" + m.group(1) + ")", lx or "")
 
 
 def wrap_math(lx: str) -> str:
@@ -420,6 +481,12 @@ def _doc_header(cfg: PipelineConfig) -> str:
         + (f"\\newfontfamily\\{FALLBACK_CMD}{{{_fallback_font(cfg)}}}\n" if _fallback_font(cfg) else "")
         + f"{lb}{cfg.extra_preamble}\n"
         "\\setlength{\\parindent}{0pt}\\setlength{\\parskip}{5pt}\n"
+        # European/Serbian math shorthands that are not standard LaTeX
+        "\\providecommand{\\tg}{\\operatorname{tg}}\\providecommand{\\ctg}{\\operatorname{ctg}}\n"
+        "\\providecommand{\\cotg}{\\operatorname{cotg}}\\providecommand{\\arctg}{\\operatorname{arctg}}\n"
+        "\\providecommand{\\arcctg}{\\operatorname{arcctg}}\\providecommand{\\tgh}{\\operatorname{tgh}}\n"
+        "\\providecommand{\\ctgh}{\\operatorname{ctgh}}\\providecommand{\\sh}{\\operatorname{sh}}\n"
+        "\\providecommand{\\ch}{\\operatorname{ch}}\\providecommand{\\th}{\\operatorname{th}}\n"
         "\\begin{document}\n"
     )
 
@@ -484,7 +551,7 @@ def _block_tex(b: dict, fig_names: dict, fallback: str = "") -> str | None:
             return None
         return f"\\begin{{{env}}}\n" + "\n".join(lines) + f"\n\\end{{{env}}}"
     if t in ("math", "table"):
-        raw = b.get("latex", "")
+        raw = strip_tags(b.get("latex", ""))
         if t == "table":
             raw = fix_table_spec(raw)
         w = wrap_math(textify_math(raw, fallback))
@@ -763,6 +830,52 @@ def compile_tex(tex_path: Path, workdir: Path, timeout: int = 120) -> tuple[bool
     return False, (errors[0] if errors else proc.stdout[-500:])
 
 
+def compile_entry(
+    cfg: PipelineConfig,
+    base: str,
+    source_pdf: str,
+    entry: dict,
+    on_event: Emitter | None = None,
+    cancel: CancelToken | None = None,
+) -> tuple[list[Path], str | None]:
+    """Plan + compile one source page into its output page PDFs.
+
+    Returns ``(pdfs, error)`` where ``error`` is the last XeLaTeX error (or None).
+    Sets ``entry["build_error"]`` on failure so the error guard can act on it.
+    """
+    cancel = cancel or CancelToken()
+    if entry.get("blank") or not entry.get("blocks"):
+        return [], None
+    page = int(entry["page"])
+    tdir = paths.tex_dir(cfg.workdir, base)
+    tdir.mkdir(parents=True, exist_ok=True)
+    parts = build_pages(cfg, base, source_pdf, entry)
+    if not parts:
+        entry["build_error"] = "no page produced"
+        return [], entry["build_error"]
+    pdfs: list[Path] = []
+    last_err: str | None = None
+    for part, tex in parts:
+        cancel.check()
+        tex_path = paths.page_tex(cfg.workdir, base, page, part)
+        tex_path.write_text(tex)
+        ok, log = compile_tex(tex_path, tdir)
+        if ok:
+            pdfs.append(paths.page_pdf(cfg.workdir, base, page, part))
+            emit(
+                on_event, Event("build", "ok", base=base, page=page, data={"part": part, "parts": len(parts)})
+            )
+        else:
+            last_err = log
+            emit(on_event, Event("build", "error", base=base, page=page, message=log))
+    if not pdfs:
+        entry["build_error"] = last_err or "no part compiled"
+    else:
+        entry.pop("build_error", None)
+        entry.pop("guard", None)  # a page that builds needs no guard decision
+    return pdfs, last_err if not pdfs else None
+
+
 def run_build(
     cfg: PipelineConfig,
     results: dict[str, list[dict]] | None = None,
@@ -797,26 +910,12 @@ def run_build(
                 # blank or failed-OCR page -> no translated PDF; the original is kept
                 # and the page is reported as missing (not a silent blank page)
                 return
-            page = entry["page"]
-            parts = build_pages(cfg, base, source_pdf, entry)
-            built = 0
-            for part, tex in parts:
-                tex_path = paths.page_tex(cfg.workdir, base, page, part)
-                tex_path.write_text(tex)
-                ok, log = compile_tex(tex_path, tdir)
-                if ok:
-                    with lock:
-                        pdfs.append(paths.page_pdf(cfg.workdir, base, page, part))
-                    built += 1
-                    emit(
-                        on_event,
-                        Event("build", "ok", base=base, page=page, data={"part": part, "parts": len(parts)}),
-                    )
-                else:
-                    emit(on_event, Event("build", "error", base=base, page=page, message=log))
-            if built == 0 and parts:
-                emit(on_event, Event("build", "error", base=base, page=page, message="no part compiled"))
+            built, _err = compile_entry(cfg, base, source_pdf, entry, on_event, cancel)
+            if built:
+                with lock:
+                    pdfs.extend(built)
 
         parallel_map(build_one, entries, cfg.concurrency)
         out[base] = sorted(pdfs, key=lambda p: p.name)
+        cache.save_json(paths.ocr_json(cfg.workdir, base), entries)
     return out

@@ -74,3 +74,19 @@ def test_fix_table_spec_leaves_correct_tables():
 
     tex = r"\begin{array}{cc} a & b \\ c & d \end{array}"
     assert fix_table_spec(tex) == tex
+
+
+def test_strip_tags_invalid_in_display_math():
+    from ocrtran.latex import strip_tags
+
+    assert strip_tags(r"x = 1 \tag{2}") == r"x = 1 \qquad (2)"
+    assert strip_tags(r"\tag*{A} y") == r"\qquad (A) y"
+
+
+def test_preamble_defines_european_trig_shorthands():
+    from ocrtran.config import PipelineConfig
+    from ocrtran.latex import preamble
+
+    tex = preamble(PipelineConfig(sources=["a.pdf"]))
+    for cmd in ("\\tg", "\\ctg", "\\arctg", "\\tgh", "\\sh", "\\ch"):
+        assert f"\\providecommand{{{cmd}}}" in tex

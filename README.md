@@ -84,6 +84,10 @@ testing. You can also add a **glossary**, **do-not-translate** terms, and free-f
 - `combine` — `interleave` (original, translation, …) · `grouped` (all originals,
   then all translations) · `side-by-side` (both languages on one page).
 - `translated-only` — just the translated document.
+- **Error guard** (`auto`): a page that fails to typeset is reviewed by the model, which
+  is handed the **error log**: it either repairs the LaTeX, explicitly keeps the original,
+  or skips the page (honouring the output mode) — instead of silently leaking the source
+  page into the output.
 - **Page numbers** found on the original (header/footer) are reproduced as a small footer
   on the translated page, so numbering survives translation.
 

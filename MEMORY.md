@@ -3,6 +3,37 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: LLM error guard + LaTeX robustness (realne funkcije -> Chinese)
+
+**Error guard (new `ocrtran/guard.py`)**: a page that fails to typeset used to be emitted
+as the untranslated original regardless of the output mode. Now, with
+`error_guard="auto"`, `run_build` records `entry["build_error"]` and a new pipeline step
+`guard.run_guard` sends the **error log + the page's blocks** to the model, which returns
+`{"action": repair|original|skip, "patches":[...]}`. A repair patches the right field
+(`latex` for math/table, `target` for text blocks) and recompiles; `skip` is written to
+`ocr.json` and `assemble` actually drops the page (even in translated-only). Guard
+failures fall back to a mode default and never break the job.
+
+**Deterministic LaTeX fixes** (so the guard is a last resort):
+- `\tag{1}` is invalid inside `\[...\]` -> `strip_tags` turns it into `\qquad (1)`;
+  applied to math/table blocks *and* inline `$...$`.
+- `\begin{equation}/align/...` embedded in prose is stashed before the `$`-split and kept
+  as real math with stray `$` removed.
+- preamble defines European shorthands `\tg \ctg \cotg \arctg \arcctg \tgh \ctgh
+  \sh \ch` (undefined in LaTeX -> "undefined control sequence").
+- double-struck/letterlike `ℝ ℕ ℤ ℚ ℂ ℙ ℍ 𝔽 ℓ ℏ ℑ ℜ ℘ ℵ` mapped to math (were missing
+  glyphs in the CJK font).
+- `is_source_text` now catches short words/abbreviations (`и`, `за`, `Сл. 7`), fixing
+  untranslated figure labels; theorem `name` is translated too; prompt asks for translated
+  names and no source words left.
+
+Live test on `~/Downloads/realne funkcije.pdf` (34 scanned pages, Serbian -> Chinese):
+**40 pages, 0 empty, 0 Cyrillic, 0 literal `\commands`, 0 missing glyphs**, tables and
+theorem names translated. Saved as `realne funkcije (Chinese, clean).pdf`.
+Tests: **433 passed** + 2 live.
+
+---
+
 ## Session: untranslated tables + narrow caption columns
 
 Two issues in a 242-page book (biologija, Chinese):
