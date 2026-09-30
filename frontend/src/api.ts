@@ -176,6 +176,8 @@ export interface JobCreate {
   concurrency?: number;
   figure_pad?: number;
   figure_mode?: "off" | "tight" | "judge";
+  figure_dpi?: number;
+  figure_format?: "auto" | "png" | "jpeg";
   output_name?: string;
   // page fitting
   layout_mode?: "single" | "auto";

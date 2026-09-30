@@ -102,6 +102,21 @@ fit without shrinking, they stay in a column. This means a page whose figures we
 *stacked* in the source still gets a compact row when there is comfortably space,
 instead of always staying a column. `preserve` keeps the original rows instead.
 
+### 5.1c Crop compression
+
+A crop is rendered at the size it will be **displayed**, not a fixed 1800 px:
+
+```
+target_px = clamp(display_frac * text_width / 72 * figure_dpi * assemble_scale,
+                  min=96, max=figure_px)
+```
+
+where `assemble_scale` is how much the translated page is enlarged when placed on the
+output page. A 21 pt icon becomes ~90 px instead of 1378 px. `figure_format` is `auto`
+(JPEG for photo-like crops, PNG for line art), `png` or `jpeg`; `jpeg_quality` defaults
+to 85. Crops are rendered without an alpha channel. Measured on a 184-page textbook:
+**7.46 MB -> 1.26 MB (-83 %)** with no visible loss.
+
 ### 5.2 Figure sizing
 
 For each row with original widths `w_i = x1-x0`:
@@ -190,6 +205,9 @@ New `PipelineConfig` fields (all engine keys, sent from `JobCreate`):
 | `min_page_scale` | `0.90` | never shrink text below this; split instead |
 | `figure_layout` | `flow` | `flow` (side by side when they fit) · `preserve` (source rows) · `grid` (always pack) · `stack` (today) |
 | `figure_max_width` | `0.85` | cap a single figure |
+| `figure_dpi` | `300` | crop resolution at the displayed size |
+| `figure_format` | `auto` | `auto` (jpeg photos / png line art) · `png` · `jpeg` |
+| `jpeg_quality` | `85` | JPEG quality |
 | `figure_max_height` | `0.38` | fraction of usable height |
 | `figure_min_width` | `0.18` | below this, reflow the row |
 | `max_figures_per_row` | `3` | wrap beyond this |

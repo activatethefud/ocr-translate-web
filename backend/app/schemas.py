@@ -27,6 +27,9 @@ class JobCreate(BaseModel):
     dpi: int = 150
     max_px: int = 1800
     figure_px: int = 1800
+    figure_dpi: int = 300
+    figure_format: Literal["auto", "png", "jpeg"] = "auto"
+    jpeg_quality: int = 85
     figure_pad: float = 0.06
     figure_mode: Literal["off", "tight", "judge"] = "judge"  # app default: best figures
     # page fitting / figures

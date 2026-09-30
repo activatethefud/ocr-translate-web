@@ -226,42 +226,74 @@ def _block_tex(b: dict, fig_names: dict) -> str | None:
     return text_to_tex(textsrc) if textsrc else None
 
 
+def _assemble_scale(cfg: PipelineConfig, source_pdf: str) -> float:
+    """How much the translated page is scaled up when placed on the output page.
+
+    Used to size figure crops: a crop rendered at ``figure_dpi`` on the translated
+    page is displayed at ``figure_dpi * scale`` after assembly.
+    """
+    out_w, _out_h = _output_dims(cfg, source_pdf)
+    area_w = max(1.0, out_w - 2 * cfg.margin_pt)
+    textw = layout.parse_length_pt(cfg.text_width)
+    base = area_w / max(1.0, textw + 16.0)  # 16pt = the standalone 8pt border x2
+    cap = 1.0 if cfg.scale_mode == "fit" else cfg.max_scale
+    return min(base, cap) if cap else base
+
+
 def _crop_figures(cfg: PipelineConfig, base: str, source_pdf: str, entry: dict) -> tuple[dict, dict]:
-    """Crop this page's figures; return (fig_names, fig_info) keyed by id(block)."""
+    """Crop this page's figures at their *placed* size; return (fig_names, fig_info)."""
     page = entry["page"]
     blocks = entry.get("blocks", [])
     tight = entry.get("tight") or []
     figs = [b for b in blocks if b.get("type") == "figure"]
     fig_names: dict[int, tuple[str | None, float]] = {}
     fig_info: dict[int, dict] = {}
+    textw = layout.parse_length_pt(cfg.text_width)
+    scale = _assemble_scale(cfg, source_pdf)
     for i, fig in enumerate(figs):
         main_bb = fig.get("bbox")
         tight_bb = tight[i] if i < len(tight) and tight[i] else None
         bb = geometry.choose_box(tight_bb, main_bb)
         if not bb:
             continue
-        name = f"fig_{page}_{i}.png"
-        dest = paths.figure_path(cfg.workdir, base, page, i)
-        ok = render.render_figure(source_pdf, page, bb, dest, cfg.figure_px, pad_frac=cfg.figure_pad)
         frac = max(0.05, float(bb[2]) - float(bb[0]))
-        has_img = bool(ok and dest.exists())
+        # pixels needed for the *displayed* size at figure_dpi (capped, with a floor)
+        disp_frac = min(cfg.figure_max_width, frac)
+        target_px = int(max(96, min(cfg.figure_px, round(disp_frac * textw / 72.0 * cfg.figure_dpi * scale))))
+        dest = paths.figure_path(cfg.workdir, base, page, i)
+        path = render.render_figure(
+            source_pdf,
+            page,
+            bb,
+            dest,
+            target_px,
+            pad_frac=cfg.figure_pad,
+            fmt=cfg.figure_format,
+            jpeg_quality=cfg.jpeg_quality,
+        )
+        name = path.name if path else None
+        if path is not None:  # drop a stale crop with the other extension
+            for old in path.parent.glob(f"fig_{page}_{i}.*"):
+                if old != path:
+                    old.unlink(missing_ok=True)
         aspect = 1.0
-        if has_img:
+        if path is not None:
             try:
                 from PIL import Image
 
-                with Image.open(dest) as im:
+                with Image.open(path) as im:
                     w, h = im.size
                 aspect = (h / w) if w else 1.0
             except Exception:  # noqa: BLE001
                 aspect = 1.0
-        fig_names[id(fig)] = (name if has_img else None, frac)
+        fig_names[id(fig)] = (name, frac)
         fig_info[id(fig)] = {
-            "name": name if has_img else None,
+            "name": name,
             "bbox": [float(x) for x in bb],
             "width": frac,
             "aspect": aspect,
             "caption": str(fig.get("caption") or ""),
+            "target_px": target_px,
         }
     return fig_names, fig_info
 

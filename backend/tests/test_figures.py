@@ -55,11 +55,13 @@ def test_render_figure_clamps_at_page_edge(tmp_path):
 
 def test_render_figure_degenerate_box(tmp_path):
     pdf = _marker_pdf(tmp_path / "m.pdf")
-    assert render.render_figure(pdf, 1, [0.5, 0.5, 0.5, 0.5], tmp_path / "x.png") is False
+    assert render.render_figure(pdf, 1, [0.5, 0.5, 0.5, 0.5], tmp_path / "x.png") is None
 
 
 def test_build_tex_prefers_tight_box(tiny_pdf, tmp_path):
-    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"), figure_pad=0.0)
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"), figure_pad=0.0, figure_format="png"
+    )
     entry = {
         "page": 1,
         # a loose main box must NOT be unioned in; the tight box wins
@@ -81,7 +83,8 @@ def test_build_tex_creates_figure_file(tiny_pdf, tmp_path):
         "tight": [],
     }
     latex.build_tex(cfg, tiny_pdf.stem, str(tiny_pdf), entry)
-    assert paths.figure_path(cfg.workdir, tiny_pdf.stem, 1, 0).exists()
+    crops = list(paths.tex_dir(cfg.workdir, tiny_pdf.stem).glob("fig_1_*"))
+    assert crops and crops[0].stat().st_size > 0  # a crop was written
 
 
 def test_build_tex_figure_pad_config(tmp_path):
@@ -89,11 +92,15 @@ def test_build_tex_figure_pad_config(tmp_path):
     tight = [[BLACK[0] / 300, BLACK[1] / 300, BLACK[2] / 300, BLACK[3] / 300]]
     entry = {"page": 1, "blocks": [{"type": "figure", "bbox": BBOX_BLACK}], "tight": tight}
 
-    cfg0 = PipelineConfig(sources=[str(pdf)], workdir=str(tmp_path / "w0"), figure_pad=0.0)
+    cfg0 = PipelineConfig(
+        sources=[str(pdf)], workdir=str(tmp_path / "w0"), figure_pad=0.0, figure_format="png"
+    )
     latex.build_tex(cfg0, pdf.stem, str(pdf), entry)
     assert not _has_red(paths.figure_path(cfg0.workdir, pdf.stem, 1, 0))
 
-    cfg1 = PipelineConfig(sources=[str(pdf)], workdir=str(tmp_path / "w1"), figure_pad=1.2)
+    cfg1 = PipelineConfig(
+        sources=[str(pdf)], workdir=str(tmp_path / "w1"), figure_pad=1.2, figure_format="png"
+    )
     latex.build_tex(cfg1, pdf.stem, str(pdf), entry)
     assert _has_red(paths.figure_path(cfg1.workdir, pdf.stem, 1, 0))
 

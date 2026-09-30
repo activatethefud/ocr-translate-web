@@ -31,8 +31,8 @@ def tex_dir(workdir: str | Path, base: str) -> Path:
     return base_dir(workdir, base) / "tex"
 
 
-def figure_path(workdir: str | Path, base: str, page: int, index: int) -> Path:
-    return tex_dir(workdir, base) / f"fig_{page}_{index}.png"
+def figure_path(workdir: str | Path, base: str, page: int, index: int, ext: str = "png") -> Path:
+    return tex_dir(workdir, base) / f"fig_{page}_{index}.{ext.lstrip('.')}"
 
 
 def page_pdf(workdir: str | Path, base: str, page: int, part: int = 1) -> Path:

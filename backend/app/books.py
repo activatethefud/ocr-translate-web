@@ -265,7 +265,7 @@ class BookDispatcher:
             for src in paths.page_pdfs(cfg.workdir, "source", page):
                 shutil.copy2(src, book_tex / src.name)
             figdir = paths.tex_dir(cfg.workdir, "source")
-            for fig in figdir.glob(f"fig_{page}_*.png"):
+            for fig in figdir.glob(f"fig_{page}_*.*"):
                 shutil.copy2(fig, book_tex / fig.name)
 
     def _update_glossary(self, book_id: str, book_config: dict, provider, results: dict) -> None:

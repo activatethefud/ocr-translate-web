@@ -80,6 +80,30 @@ def _border_ink(path: str | Path, band: int = 2) -> float:
     return ink / max(1, tot)
 
 
+def _photographic(pix: fitz.Pixmap, max_colors: int = 1024) -> bool:
+    """True if a crop looks photo-like (many colours) rather than line art."""
+    try:
+        p = fitz.Pixmap(pix)
+        while max(p.width, p.height) > 256:
+            p.shrink(1)
+        n = p.n
+        if n == 1:
+            ch = 1
+        elif n in (3, 4):  # ignore an alpha channel if present
+            ch = 3
+        else:  # CMYK etc.
+            return True
+        data = p.samples
+        seen: set[bytes] = set()
+        for i in range(0, len(data) - n + 1, n):
+            seen.add(bytes(data[i : i + ch]))
+            if len(seen) > max_colors:
+                return True
+        return False
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def render_figure(
     pdf: str | Path,
     page_no: int,
@@ -89,36 +113,49 @@ def render_figure(
     pad_frac: float = 0.06,
     min_pad_pt: float = 6.0,
     auto_expand: bool = True,
-) -> bool:
-    """Crop a figure from the *source* PDF at high resolution.
+    fmt: str = "png",
+    jpeg_quality: int = 85,
+) -> Path | None:
+    """Crop a figure from the *source* PDF and save it (returns the file written).
 
-    ``bbox`` is normalised ``[x0, y0, x1, y1]`` (0..1). The box is padded slightly
-    (``pad_frac`` of its size, at least ``min_pad_pt``) so model boxes that are a
-    little too tight don't clip the diagram. Cropping from the source (rather than
-    the small OCR render) keeps figures sharp when the whole page is scaled up.
+    ``bbox`` is normalised ``[x0, y0, x1, y1]`` (0..1). ``target_px`` caps the
+    longest side: callers size it to the figure's **placed** size (``figure_dpi``),
+    not a fixed value, so figures aren't stored at absurd resolutions. ``fmt`` is
+    ``png`` (lossless), ``jpeg`` (small) or ``auto`` (jpeg for photo-like crops,
+    png for line art). Pads the box slightly so tight model boxes don't clip.
     """
     if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
-        return False  # degenerate box (padding would manufacture a crop)
+        return None  # degenerate box (padding would manufacture a crop)
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with fitz.open(pdf) as doc:
         page = doc[page_no - 1]
         w, h = page.rect.width, page.rect.height
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         grow = pad_frac
         extra_pt = min_pad_pt
+        written: Path | None = None
         for attempt in range(4):
             x0, y0, x1, y1 = expand_bbox(bbox, grow, extra_pt, w, h)
             clip = fitz.Rect(x0 * w, y0 * h, x1 * w, y1 * h)
             if clip.width <= 0 or clip.height <= 0:
-                return False
-            zoom = min(target_px / max(clip.width, clip.height), 24.0)
-            pix = page.get_pixmap(clip=clip, matrix=fitz.Matrix(zoom, zoom))
-            pix.save(str(out_path))
+                return None
+            zoom = min(max(1e-3, target_px / max(clip.width, clip.height)), 24.0)
+            pix = page.get_pixmap(clip=clip, matrix=fitz.Matrix(zoom, zoom), alpha=False)
+            use_jpeg = fmt in ("jpeg", "jpg") or (fmt == "auto" and _photographic(pix))
+            written = out_path.with_suffix(".jpg" if use_jpeg else ".png")
+            if use_jpeg:
+                try:
+                    written.write_bytes(pix.tobytes("jpg", jpg_quality=jpeg_quality))
+                except Exception:  # noqa: BLE001 - older PyMuPDF
+                    pix.save(str(written))
+            else:
+                pix.save(str(written))
             # if ink still touches the border, the box is probably still too tight
-            if not auto_expand or _border_ink(out_path) < 0.06 or attempt == 3:
+            if not auto_expand or _border_ink(written) < 0.06 or attempt == 3:
                 break
             grow = min(0.6, grow * 2 + 0.06)
             extra_pt = min(60.0, extra_pt * 2 + 6)
-    return True
+    return written
 
 
 def looks_scanned(pdf: str | Path, sample: int = 3) -> bool:

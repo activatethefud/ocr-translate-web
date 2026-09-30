@@ -53,7 +53,10 @@ class PipelineConfig:
     linebreak_locale: str = ""
     extra_preamble: str = ""
     text_width: str = "16.5cm"
-    figure_px: int = 1800
+    figure_px: int = 1800  # hard cap on a crop's longest side (px)
+    figure_dpi: int = 300  # target print resolution of crops (scaled to placement)
+    figure_format: str = "auto"  # auto (jpeg for photos, png for line art) | png | jpeg
+    jpeg_quality: int = 85
     figure_pad: float = 0.06  # pad figure boxes by this fraction (avoids clipping)
     skip_blank_pages: bool = True  # don't translate (near-)blank pages
     blank_threshold: float = 0.0003  # ink ratio below which a page is "blank"
@@ -142,6 +145,12 @@ class PipelineConfig:
             raise ConfigError("scale_mode must be 'fill' or 'fit'")
         if self.figure_pad < 0:
             raise ConfigError("figure_pad must be >= 0")
+        if self.figure_dpi <= 0:
+            raise ConfigError("figure_dpi must be positive")
+        if self.figure_format not in ("auto", "png", "jpeg"):
+            raise ConfigError("figure_format must be auto, png or jpeg")
+        if not (1 <= self.jpeg_quality <= 100):
+            raise ConfigError("jpeg_quality must be between 1 and 100")
         if self.figure_mode not in ("off", "tight", "judge"):
             raise ConfigError("figure_mode must be off, tight or judge")
         if self.layout_mode not in ("single", "auto"):

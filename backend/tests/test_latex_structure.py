@@ -159,7 +159,7 @@ def test_figure_without_crop_or_caption_is_skipped():
 def test_build_tex_missing_crop_keeps_caption(tiny_pdf, tmp_path, monkeypatch):
     from ocrtran import render as render_mod
 
-    monkeypatch.setattr(render_mod, "render_figure", lambda *a, **k: False)  # crop fails
+    monkeypatch.setattr(render_mod, "render_figure", lambda *a, **k: None)  # crop fails
     from ocrtran.config import PipelineConfig
 
     cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"))

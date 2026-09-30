@@ -129,7 +129,16 @@ skip themselves when `xelatex` is missing.
   side-by-side figures + 8 paragraphs -> `single` = 1 page at ~0.86x, `auto` = 2
   pages at ~1.13x (text stays bigger); figure row stays side by side.
 
-### 8. Multi-document batches (no network)
+### 8. Figure compression
+- `backend/tests/test_compression.py`: `target_px` is honoured (a 128 px request makes a
+  ~100-140 px image, not 1800); `png`/`jpeg`/`auto` output extensions; `auto` picks JPEG
+  for a photo-like crop and PNG for line art; config validation for dpi/format/quality.
+- integration: crop resolution tracks `figure_dpi` (600 dpi > 3x the pixels of 150 dpi)
+  and the default crop for a small figure is < 800 px (was a fixed 1800).
+- `render` returns the written `Path` (or `None` for a degenerate box); crops have no
+  alpha channel.
+
+### 9. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique
   `NN <name> (<target>)` output names, parent kind/status/total.

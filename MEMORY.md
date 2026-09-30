@@ -3,6 +3,31 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: figure-crop compression (right-size + png/jpeg)
+
+Figures were cropped at a fixed `figure_px=1800` long side regardless of how big they
+were placed, and saved as lossless PNG (sometimes with an alpha channel). A 7-page
+textbook output was 7.46 MB, with 21pt icons stored at 1378x1801 (~4700 dpi).
+
+Fix:
+- `latex._crop_figures` sizes the crop to the **displayed** size:
+  `target_px = disp_frac*text_width/72 * figure_dpi * assemble_scale` (clamped to
+  [96, figure_px]). `_assemble_scale` = how much the translated page is scaled up on
+  the output page (so big source pages still get enough pixels).
+- `render.render_figure` returns the written `Path` (or `None`), renders with
+  `alpha=False`, and supports `fmt` = png/jpeg/auto (`_photographic` = >1024 quantised
+  colours -> JPEG, else PNG). New config: `figure_dpi` (300), `figure_format` (auto),
+  `jpeg_quality` (85); `figure_px` stays a hard cap.
+- stale crops with the other extension are removed; `books._collect_pages` copies
+  `fig_{page}_*.*`.
+- UI/schema expose `figure_dpi` / `figure_format`.
+
+Result: the 7.46 MB output rebuilt from the same OCR -> **1.26 MB (-83%)**, 7 pages,
+0 empty. Tests: `test_compression.py` (6, +integration) and updated render/figure tests.
+**372 passed** + 2 live.
+
+---
+
 ## Session: flow figures left-to-right when they fit
 
 Added `figure_layout="flow"` (now the **default**): figures on a page are packed

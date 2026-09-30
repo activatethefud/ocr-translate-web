@@ -135,6 +135,8 @@ export function App() {
   const [minPageScale, setMinPageScale] = useState(0.9);
   const [figureLayout, setFigureLayout] = useState<"flow" | "preserve" | "grid" | "stack">("flow");
   const [figureMaxHeight, setFigureMaxHeight] = useState(0.38);
+  const [figureDpi, setFigureDpi] = useState(300);
+  const [figureFormat, setFigureFormat] = useState<"auto" | "png" | "jpeg">("auto");
   const [outputName, setOutputName] = useState("");
   const [bookMode, setBookMode] = useState(false);
   const [chunkSize, setChunkSize] = useState(25);
@@ -270,6 +272,8 @@ export function App() {
       min_page_scale: minPageScale,
       figure_layout: figureLayout,
       figure_max_height: figureMaxHeight,
+      figure_dpi: figureDpi,
+      figure_format: figureFormat,
     };
     try {
       const j = queueMode
@@ -516,6 +520,19 @@ export function App() {
                 <label>Max figure height %
                   <input type="number" min={15} max={60} value={Math.round(figureMaxHeight * 100)}
                          onChange={(e) => setFigureMaxHeight(Math.max(0.15, Math.min(0.6, (Number(e.target.value) || 38) / 100)))} />
+                </label>
+              </div>
+              <div className="row">
+                <label>Figure resolution (dpi)
+                  <input type="number" min={96} max={600} value={figureDpi}
+                         onChange={(e) => setFigureDpi(Math.max(96, Math.min(600, Number(e.target.value) || 300)))} />
+                </label>
+                <label>Figure images
+                  <select value={figureFormat} onChange={(e) => setFigureFormat(e.target.value as "auto" | "png" | "jpeg")}>
+                    <option value="auto">auto (jpeg for photos, png for line art)</option>
+                    <option value="jpeg">jpeg (smallest)</option>
+                    <option value="png">png (lossless)</option>
+                  </select>
                 </label>
               </div>
             </>

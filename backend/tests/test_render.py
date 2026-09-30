@@ -38,4 +38,4 @@ def test_render_figure(tiny_pdf, tmp_path):
 
 
 def test_render_figure_bad_bbox(tiny_pdf, tmp_path):
-    assert render.render_figure(tiny_pdf, 1, [0.5, 0.5, 0.5, 0.5], tmp_path / "x.png") is False
+    assert render.render_figure(tiny_pdf, 1, [0.5, 0.5, 0.5, 0.5], tmp_path / "x.png") is None
