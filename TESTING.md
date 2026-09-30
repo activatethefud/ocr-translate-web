@@ -157,6 +157,15 @@ in inline math instead of being escaped to a literal `\sqrt` — `\sqrt{289}`,
 are still escaped. Integration: a page of `c = \sqrt{289} = 17` compiles and the PDF text
 contains no `\sqrt`/`\frac`/`\cdot`.
 
+### 9c. Book live progress, resume and disk guard
+- `test_books.py`: `_finish_chunk` records `done_pages`; `_set_chunk_pages` + `tick`
+  update the book's `done_pages`/`progress` (including a partially done running chunk).
+- `test_api.py`: resuming a book re-queues failed chunks; a low-disk (monkeypatched
+  `storage.free_mb`) job create returns 507; `POST /api/admin/prune` requires the token
+  and frees intermediates.
+- `test_storage.py`: `prune_work` removes `source/pages`, `source/tex`, `chunks/` for
+  finished jobs, keeps active jobs and `source/ocr.json`.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

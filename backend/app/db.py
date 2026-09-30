@@ -118,6 +118,7 @@ class Chunk(Base):
     page_from: Mapped[int] = mapped_column(Integer)
     page_to: Mapped[int] = mapped_column(Integer)
     state: Mapped[str] = mapped_column(String(16), default="queued")  # queued|running|done|failed
+    done_pages: Mapped[int] = mapped_column(Integer, default=0)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, default=3)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
@@ -193,6 +194,10 @@ def ensure_columns(eng: Engine) -> None:
         for name, ddl in additions.items():
             if name not in existing:
                 conn.exec_driver_sql(f"ALTER TABLE jobs ADD COLUMN {name} {ddl}")
+        if "chunks" in insp.get_table_names():
+            have = {c["name"] for c in insp.get_columns("chunks")}
+            if "done_pages" not in have:
+                conn.exec_driver_sql("ALTER TABLE chunks ADD COLUMN done_pages INTEGER DEFAULT 0")
 
 
 def get_session():

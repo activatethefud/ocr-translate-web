@@ -646,18 +646,25 @@ export function App() {
                 <>
                   <div className="row spread">
                     <b>Chunks</b>
+                    <span className="muted">
+                      {chunks.filter((c) => c.state === "done").length}/{chunks.length} done ·{" "}
+                      {chunks.reduce((a, c) => a + (c.done_pages || 0), 0)} pages
+                    </span>
                     <span>
                       {running && <button className="ghost" onClick={() => api.pauseBook(job.id)}>Pause</button>}
-                      {job.status === "paused" && <button className="ghost" onClick={() => api.resumeBook(job.id)}>Resume</button>}
+                      {(job.status === "paused" || job.status === "failed") && (
+                      <button className="ghost" onClick={() => api.resumeBook(job.id)}>Resume</button>
+                    )}
                       {running && <button className="ghost" onClick={() => api.cancel(job.id)}>Cancel</button>}
                     </span>
                   </div>
                   <table className="chunks">
-                    <thead><tr><th>Pages</th><th>State</th><th>Cost</th><th></th></tr></thead>
+                    <thead><tr><th>Pages</th><th>Done</th><th>State</th><th>Cost</th><th></th></tr></thead>
                     <tbody>
                       {chunks.map((c) => (
                         <tr key={c.id}>
                           <td>{c.page_from}–{c.page_to}</td>
+                          <td>{c.done_pages || 0}/{c.page_to - c.page_from + 1}</td>
                           <td>{c.state}{c.error ? ` ⚠` : ""}</td>
                           <td>{c.cost_usd > 0 ? `$${c.cost_usd.toFixed(4)}` : ""}</td>
                           <td>

@@ -30,6 +30,7 @@ class Settings:
     api_base: str = "https://api.deepseek.com/chat/completions"
     api_key_env: str = "DS_KEY"
     max_upload_mb: int = 200
+    min_free_mb: int = 200  # refuse new jobs below this much free disk
     max_pages: int = 1000
     max_job_usd: float = 2.0
     max_book_usd: float = 5.0
@@ -92,6 +93,7 @@ def load_settings() -> Settings:
         api_base=os.environ.get("API_BASE", "https://api.deepseek.com/chat/completions"),
         api_key_env=os.environ.get("API_KEY_ENV", "DS_KEY"),
         max_upload_mb=_int("MAX_UPLOAD_MB", 200),
+        min_free_mb=_int("MIN_FREE_MB", 200),
         max_pages=_int("MAX_PAGES", 1000),
         max_job_usd=_float("MAX_JOB_USD", 2.0),
         max_book_usd=_float("MAX_BOOK_USD", 5.0),

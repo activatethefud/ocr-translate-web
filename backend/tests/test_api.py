@@ -312,3 +312,57 @@ def test_batch_api_creates_children_in_order(client, tiny_pdf):
 def test_batch_api_rejects_empty(client, tiny_pdf):
     r = client.post("/api/batch", json={"target_lang": "French", "document_ids": []})
     assert r.status_code == 422
+
+
+def test_low_disk_refuses_new_jobs(client, tiny_pdf, monkeypatch):
+    from app import storage
+
+    monkeypatch.setattr(storage, "free_mb", lambda _p: 0)
+    doc = _upload(client, tiny_pdf).json()
+    r = client.post(f"/api/documents/{doc['id']}/jobs", json={"target_lang": "French"})
+    assert r.status_code == 507
+
+
+def test_admin_prune_endpoint(client, tmp_path):
+    from app import storage
+
+    settings = client.app.state.settings
+    settings.admin_token = "secret"
+    w = storage.work_dir(settings, "doc", "gone")
+    (w / "source" / "pages").mkdir(parents=True, exist_ok=True)
+    (w / "source" / "pages" / "p.png").write_bytes(b"x" * 1000)
+    assert client.post("/api/admin/prune").status_code == 403
+    r = client.post("/api/admin/prune", headers={"X-Admin-Token": "secret"})
+    assert r.status_code == 200 and r.json()["removed"] >= 1
+    settings.admin_token = ""
+
+
+def test_resume_book_requeues_failed_chunks(client, tiny_pdf):
+    from sqlalchemy import select
+
+    from app import db
+
+    client.app.state.dispatcher._stop.set()  # stop the dispatcher so it can't race us
+    doc = _upload(client, tiny_pdf).json()
+    jid = client.post(
+        f"/api/documents/{doc['id']}/book", json={"target_lang": "French", "chunk_size": 1}
+    ).json()["id"]
+    s = db.get_session()
+    try:
+        s.get(db.Job, jid).status = "paused"  # keep the dispatcher off it
+        c = s.execute(select(db.Chunk).where(db.Chunk.book_job_id == jid)).scalars().first()
+        c.state = "failed"
+        c.attempts = 3
+        c.error = "boom"
+        s.commit()
+        cid = c.id
+    finally:
+        s.close()
+
+    assert client.post(f"/api/jobs/{jid}/resume").json()["ok"] is True
+    s = db.get_session()
+    try:
+        c = s.get(db.Chunk, cid)
+        assert c.state == "queued" and c.attempts == 0 and c.error is None
+    finally:
+        s.close()

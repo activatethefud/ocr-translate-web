@@ -135,6 +135,7 @@ export interface Chunk {
   page_from: number;
   page_to: number;
   state: string;
+  done_pages: number;
   attempts: number;
   max_attempts: number;
   cost_usd: number;

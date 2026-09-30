@@ -125,3 +125,50 @@ def copy_artifact(
     dest = outdir / (dest_name or Path(src).name)
     shutil.copy2(src, dest)
     return dest
+
+
+def free_mb(path) -> int:
+    """Free megabytes on the filesystem holding ``path``."""
+    import shutil
+
+    try:
+        return shutil.disk_usage(str(path)).free // (1024 * 1024)
+    except OSError:
+        return 1 << 30  # unknown -> don't block
+
+
+def _dir_size(path) -> int:
+    total = 0
+    for p in Path(path).rglob("*"):
+        try:
+            if p.is_file():
+                total += p.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def prune_work(settings, keep_job_ids: set[str] | None = None) -> dict:
+    """Delete heavy regenerable intermediates from finished jobs' work dirs.
+
+    Removes ``source/pages`` (page renders), ``source/tex`` (LaTeX + crops + page PDFs)
+    and ``chunks/`` for every job whose id is not in ``keep_job_ids``. Keeps
+    ``source/ocr.json`` (review), the per-document OCR ``cache`` and the output
+    ``artifacts`` — everything else is rebuilt from the cache for free.
+    """
+    import shutil
+
+    keep = set(keep_job_ids or ())
+    root = Path(settings.storage_dir) / "docs"
+    freed = 0
+    removed = 0
+    for work in root.glob("*/work/*"):
+        if work.name in keep:
+            continue
+        for sub in ("source/pages", "source/tex", "chunks"):
+            target = work / sub
+            if target.exists():
+                freed += _dir_size(target)
+                shutil.rmtree(target, ignore_errors=True)
+                removed += 1
+    return {"freed_bytes": freed, "freed_mb": freed // (1024 * 1024), "removed": removed}

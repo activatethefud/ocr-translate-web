@@ -110,3 +110,27 @@ def test_copy_artifact_default_name(tmp_path):
     src = tmp_path / "orig.pdf"
     src.write_bytes(b"%PDF-1.4")
     assert storage.copy_artifact(settings, "job1", src, "output").name == "orig.pdf"
+
+
+def test_prune_work_removes_intermediates_but_keeps_review_and_cache(tmp_path):
+    from app import storage
+    from app.settings import Settings
+
+    settings = Settings(storage_dir=tmp_path / "store")
+    settings.ensure_dirs()
+    for jid in ("j1", "j2"):
+        w = storage.work_dir(settings, "doc", jid)
+        for sub in ("source/pages", "source/tex", "chunks/c0"):
+            (w / sub).mkdir(parents=True, exist_ok=True)
+            (w / sub / "blob").write_bytes(b"x" * 1000)
+        (w / "source" / "ocr.json").write_text("[]")
+    res = storage.prune_work(settings, {"j1"})
+    assert res["removed"] >= 3 and res["freed_bytes"] > 0
+
+    kept = storage.work_dir(settings, "doc", "j1")
+    pruned = storage.work_dir(settings, "doc", "j2")
+    assert (kept / "source" / "pages").exists()  # active job untouched
+    assert not (pruned / "source" / "pages").exists()
+    assert not (pruned / "source" / "tex").exists()
+    assert not (pruned / "chunks").exists()
+    assert (pruned / "source" / "ocr.json").exists()  # review data kept

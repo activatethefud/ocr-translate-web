@@ -3,6 +3,29 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: book stays at 0/N, disk full, resume
+
+Three fixes:
+
+1. **Book progress stuck at 0/N.** `tick()` only advanced progress when a whole chunk
+   finished and never set `done_pages`. Added `chunks.done_pages` (+ migration), the
+   chunk now reports per-page progress (`_set_chunk_pages` + a `chunk_page` event) from
+   `ocr.run_ocr`/`run_build` `on_event`, `_finish_chunk` sets `done_pages = span`, and
+   `tick()` sets the book's `done_pages`/`progress` from `sum(done_pages)` (done chunks
+   count their span). UI chunk table shows `done/total`.
+2. **Disk full (`[Errno 28]`).** The running book failed because `/home` filled. Freed
+   5.7 GB (app work intermediates `source/pages|tex|chunks` ~2.5 GB + stale
+   `~/.config/indexdir` 3.4 GB). Added `storage.free_mb`, a startup warning, a **507**
+   refusal on new jobs/books/batches below `MIN_FREE_MB` (200), `storage.prune_work`,
+   `POST /api/admin/prune`, and `tools/prune.py`.
+3. **Resume a failed book.** `resume` now re-queues failed chunks (attempts=0) and the UI
+   shows **Resume** on failed book jobs, so the interrupted book continues from its
+   finished chunks via the cache.
+
+Tests: +8 (books/api/storage). **399 passed** + 2 live.
+
+---
+
 ## Session: fix literal "\sqrt" in prose
 
 The model sometimes emits LaTeX math commands in a **prose/target** field without `$...$`

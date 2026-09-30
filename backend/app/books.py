@@ -88,6 +88,7 @@ def create_book(
         config=cfg,
         status="running",
         kind="book",
+        started_at=db.utcnow(),
         model=cfg.get("model") or settings.default_model,
         source_lang=cfg.get("source_lang", "auto"),
         target_lang=cfg.get("target_lang", ""),
@@ -183,7 +184,13 @@ class BookDispatcher:
                     chunk.attempts += 1
                     s.commit()
                     self._executor.submit(self._run_chunk, book.id, chunk.id)
-                done_pages = sum(c.page_to - c.page_from + 1 for c in chunks if c.state == "done")
+
+                def _pages(c) -> int:
+                    span = c.page_to - c.page_from + 1
+                    return span if c.state == "done" else (c.done_pages or 0)
+
+                done_pages = sum(_pages(c) for c in chunks)
+                book.done_pages = min(book.total_pages, done_pages)
                 book.progress = min(0.99, done_pages / max(1, book.total_pages))
                 s.commit()
         finally:
@@ -204,9 +211,32 @@ class BookDispatcher:
             cfg = self._chunk_config(book_config, doc_id, book_id, chunk_id, chunk_range)
             provider = self._make_provider(book_config, self._api_key(book_config), self.settings)
             calls_before = (getattr(provider, "usage", {}) or {}).get("calls", 0)
-            results = ocr.run_ocr(cfg, provider)
+            counts = {"done": 0}
+            plock = threading.Lock()
+
+            def on_progress(e) -> None:
+                if e.stage == "ocr" and e.status in ("ok", "warn") and e.page:
+                    with plock:
+                        counts["done"] += 1
+                        n = counts["done"]
+                    self._set_chunk_pages(chunk_id, n)
+                    _emit(
+                        book_id,
+                        "chunk_page",
+                        f"page {e.page} ({chunk_range[0]}-{chunk_range[1]})",
+                        {"chunk_id": chunk_id, "page": e.page, "done": n},
+                    )
+                elif e.stage == "build" and e.status == "error":
+                    _emit(
+                        book_id,
+                        "chunk_build_error",
+                        f"page {e.page}: {(e.message or '')[:160]}",
+                        {"chunk_id": chunk_id, "page": e.page},
+                    )
+
+            results = ocr.run_ocr(cfg, provider, on_event=on_progress)
             annotate.run_annotate(cfg, provider, results)
-            latex.run_build(cfg, results)
+            latex.run_build(cfg, results, on_event=on_progress)
             self._collect_pages(cfg, book_config, doc_id, book_id, chunk_range)
             usage = getattr(provider, "usage", {}) or {}
             cost = pricing.cost_usd(
@@ -293,11 +323,22 @@ class BookDispatcher:
         finally:
             s.close()
 
+    def _set_chunk_pages(self, chunk_id: str, n: int) -> None:
+        s = db.get_session()
+        try:
+            chunk = s.get(db.Chunk, chunk_id)
+            if chunk and n > (chunk.done_pages or 0):
+                chunk.done_pages = n
+                s.commit()
+        finally:
+            s.close()
+
     def _finish_chunk(self, chunk_id: str, cost: float) -> None:
         s = db.get_session()
         try:
             chunk = s.get(db.Chunk, chunk_id)
             chunk.state = "done"
+            chunk.done_pages = chunk.page_to - chunk.page_from + 1
             chunk.cost_usd = cost
             chunk.error = None
             chunk.finished_at = db.utcnow()

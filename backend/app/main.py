@@ -50,6 +50,7 @@ from .secrets import get_cipher, hint_for
 from .settings import Settings, get_settings
 
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("app.main")
 
 
 @asynccontextmanager
@@ -67,6 +68,9 @@ async def lifespan(app: FastAPI):
     app.state.batch = batch_mod.BatchDispatcher(settings, runner=app.state.runner)
     app.state.batch.start()
     THROTTLE.set_ceiling(settings.max_concurrent_calls)
+    free = storage.free_mb(settings.storage_dir)
+    if free < settings.min_free_mb:
+        log.warning("low disk: %d MB free (< %d MB)", free, settings.min_free_mb)
     try:
         yield
     finally:
@@ -106,6 +110,16 @@ def _dispatcher() -> books.BookDispatcher:
 
 def _batch() -> batch_mod.BatchDispatcher:
     return app.state.batch
+
+
+def _check_disk(settings: Settings) -> None:
+    """Refuse new work when the storage filesystem is (nearly) full."""
+    if storage.free_mb(settings.storage_dir) < settings.min_free_mb:
+        raise HTTPException(
+            507,
+            f"server is low on disk space (<{settings.min_free_mb} MB free); "
+            "free space or POST /api/admin/prune",
+        )
 
 
 def _recover_orphaned_jobs() -> None:
@@ -437,6 +451,26 @@ def admin_stats(x_admin_token: str = Header(default="")) -> dict:
     }
 
 
+@app.post("/api/admin/prune")
+def admin_prune(x_admin_token: str = Header(default=""), settings: Settings = Depends(_settings_dep)) -> dict:
+    """Delete heavy intermediates of finished jobs (keeps cache + artifacts)."""
+    if not settings.admin_token or x_admin_token != settings.admin_token:
+        raise HTTPException(403, "forbidden")
+    s = db.get_session()
+    try:
+        active = {
+            j.id
+            for j in s.execute(
+                select(db.Job).where(db.Job.status.in_(("running", "queued", "paused", "finalizing")))
+            )
+            .scalars()
+            .all()
+        }
+    finally:
+        s.close()
+    return storage.prune_work(settings, active)
+
+
 @app.get("/api/learning")
 def learning_stats() -> dict:
     """Learned per-call token averages for each model (from real usage)."""
@@ -466,6 +500,7 @@ def create_job(
         doc = s.get(db.Document, doc_id)
         if not doc:
             raise HTTPException(404, "document not found")
+        _check_disk(settings)
         cfg = body.model_dump()
         provided_key = (cfg.pop("api_key", None) or "").strip()
         if provided_key:
@@ -846,6 +881,7 @@ def create_batch_endpoint(
             if doc.id not in seen:  # de-dupe, keep order
                 seen.add(doc.id)
                 docs.append(doc)
+        _check_disk(settings)
         provided_key = (body.api_key or "").strip()
         if provided_key:
             row = _get_session(s, sid)
@@ -903,6 +939,7 @@ def create_book_endpoint(
         doc = s.get(db.Document, doc_id)
         if not doc:
             raise HTTPException(404, "document not found")
+        _check_disk(settings)
         provided_key = (body.api_key or "").strip()
         if provided_key:
             row = _get_session(s, sid)
@@ -960,6 +997,7 @@ def job_chunks(job_id: str):
                 page_from=c.page_from,
                 page_to=c.page_to,
                 state=c.state,
+                done_pages=c.done_pages,
                 attempts=c.attempts,
                 max_attempts=c.max_attempts,
                 cost_usd=c.cost_usd,
@@ -980,6 +1018,12 @@ def _book_status(job_id: str, status: str) -> OkOut:
         if job.kind != "book":
             raise HTTPException(400, "not a book job")
         job.status = status
+        if status == "running":  # resume: retry chunks that never finished
+            for c in s.execute(select(db.Chunk).where(db.Chunk.book_job_id == job.id)).scalars():
+                if c.state == "failed":
+                    c.state = "queued"
+                    c.attempts = 0
+                    c.error = None
         s.commit()
     finally:
         s.close()

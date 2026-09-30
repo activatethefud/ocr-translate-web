@@ -715,3 +715,41 @@ def test_finalize_subset_range_only(env, xelatex_available):
         assert not job.error  # pages outside the book range are not "missing"
     finally:
         s.close()
+
+
+# -- live progress: per-page done_pages ------------------------------------
+def test_finish_chunk_sets_done_pages(env):
+    bid = _new_book(env, n_pages=3, chunk_size=2)  # chunk 0 = pages 1-2
+    cid = _chunks(bid)[0].id
+    _dispatcher(env)._finish_chunk(cid, 0.0)
+    c = _chunks(bid)[0]
+    assert c.state == "done" and c.done_pages == 2
+
+
+def test_set_chunk_pages_updates_progress(env):
+    bid = _new_book(env, n_pages=4, chunk_size=2)  # 2 chunks of 2 pages
+    cid = _chunks(bid)[0].id
+    d = _dispatcher(env)
+    d._executor = _RecExec()
+    d._set_chunk_pages(cid, 1)  # one page of the first chunk is done
+    d.tick()
+    job = db.get_session().get(db.Job, bid)
+    assert job.done_pages == 1
+    assert abs(job.progress - 0.25) < 1e-6
+
+
+def test_tick_progress_uses_partial_chunks(env):
+    bid = _new_book(env, n_pages=4, chunk_size=2)
+    s = db.get_session()
+    try:
+        for c in s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid)).scalars():
+            c.done_pages = 1
+        s.commit()
+    finally:
+        s.close()
+    d = _dispatcher(env)
+    d._executor = _RecExec()
+    d.tick()
+    job = db.get_session().get(db.Job, bid)
+    assert job.done_pages == 2
+    assert abs(job.progress - 0.5) < 1e-6

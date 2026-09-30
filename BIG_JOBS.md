@@ -213,6 +213,17 @@ boundaries editable before start.
   respected) with a cooldown; after a quiet period the limit ramps back up one slot at a
   time. Shared across pages, book chunks and batches. `MAX_CONCURRENT_CALLS` (default 16)
   sets the ceiling; state is exposed in `/api/admin/stats` -> `throttle`.
+- **Live progress.** Each chunk reports per-page progress (`chunks.done_pages` + a
+  `chunk_page` event on the book job) as pages finish, and `tick()` sets the book's
+  `done_pages`/`progress` from those counts — so the UI no longer sits at `0/N` until a
+  whole chunk completes. The chunk table shows `done/total` pages.
+- **Resume after a disk-full / crash.** `POST /api/jobs/{id}/resume` re-queues failed
+  chunks, so a book that died mid-run continues from its finished chunks (cache-first).
+- **Disk protection.** `storage.free_mb`, a startup warning, a 507 refusal on new
+  jobs/books/batches under `MIN_FREE_MB`, and `storage.prune_work` (also
+  `POST /api/admin/prune` / `python tools/prune.py`) which deletes regenerable
+  intermediates (`source/pages`, `source/tex`, `chunks/`) for finished jobs while keeping
+  the per-document cache, `ocr.json` and output artifacts.
 - Chunk retry: `attempts` is bumped on dispatch; a failed chunk is re-queued until
   `max_attempts` (3), then `failed`; a permanently failed chunk never stalls the book
   (finalize runs once all chunks are terminal).

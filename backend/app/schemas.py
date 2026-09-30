@@ -183,6 +183,7 @@ class ChunkOut(BaseModel):
     page_from: int
     page_to: int
     state: str
+    done_pages: int = 0
     attempts: int
     max_attempts: int
     cost_usd: float
