@@ -253,11 +253,89 @@ _ESC = {
 }
 
 
+# LaTeX math commands the model sometimes leaves in prose (no $...$): wrap them in
+# inline math instead of escaping the backslash into a literal "\sqrt".
+MATH_COMMANDS = frozenset(
+    """sqrt frac dfrac tfrac binom choose overline underline vec hat bar dot ddot tilde
+    widehat widetilde left right text mathrm mathbf mathit mathcal mathbb mathfrak
+    operatorname displaystyle textstyle quad qquad
+    cdot cdots times div pm mp ast star circ bullet le leq ge geq ne neq approx equiv
+    sim simeq cong propto ll gg subset subseteq supset supseteq in notin ni cup cap
+    setminus emptyset varnothing forall exists nexists neg land lor wedge vee
+    to gets mapsto rightarrow leftarrow leftrightarrow Rightarrow Leftarrow Leftrightarrow
+    uparrow downarrow updownarrow longrightarrow longleftarrow
+    infty partial nabla sum prod int oint iint iiint lim limsup liminf
+    sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh log ln exp min max gcd lcm
+    alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu
+    nu xi pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega
+    Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega
+    ldots dots vdots ddots prime degree angle triangle square
+    """.split()
+)
+_CMD_RE = re.compile(r"\\([A-Za-z]+)")
+
+
+def _scan_math_command(seg: str, i: int) -> str | None:
+    """From a backslash at ``i``, the command plus its {} / [] / _ ^ arguments."""
+    m = _CMD_RE.match(seg, i)
+    if not m or m.group(1) not in MATH_COMMANDS:
+        return None
+    j = m.end()
+    while j < len(seg):
+        c = seg[j]
+        if c == "{":
+            depth, k = 0, j
+            while k < len(seg):
+                if seg[k] == "{":
+                    depth += 1
+                elif seg[k] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                k += 1
+            if depth != 0:
+                break
+            j = k + 1
+        elif c == "[":
+            k = seg.find("]", j + 1)
+            if k < 0:
+                break
+            j = k + 1
+        elif c in "^_":
+            j += 1
+            if j < len(seg) and seg[j] == "{":
+                depth, k = 0, j
+                while k < len(seg):
+                    if seg[k] == "{":
+                        depth += 1
+                    elif seg[k] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    k += 1
+                if depth != 0:
+                    break
+                j = k + 1
+            elif j < len(seg):
+                j += 1
+        else:
+            break
+    return seg[i:j]
+
+
 def _map_text(seg: str, fallback: str) -> str:
     seg = "".join(c for c in seg if ord(c) >= 32 or c in "\t")
     seg = seg.replace("\\{", "{").replace("\\}", "}")  # un-escape set braces
     out: list[str] = []
-    for ch in seg:
+    i = 0
+    while i < len(seg):
+        ch = seg[i]
+        if ch == "\\":
+            span = _scan_math_command(seg, i)
+            if span:
+                out.append("$" + _map_math(span, fallback) + "$")
+                i += len(span)
+                continue
         if ch in SYMBOL_TO_MATH:
             out.append("$" + SYMBOL_TO_MATH[ch] + "$")
         elif ch in SUBSCRIPTS:
@@ -270,6 +348,7 @@ def _map_text(seg: str, fallback: str) -> str:
             out.append("{\\" + FALLBACK_CMD + " " + ch + "}")
         else:
             out.append(_ESC.get(ch, ch))
+        i += 1
     return "".join(out)
 
 

@@ -150,6 +150,13 @@ skip themselves when `xelatex` is missing.
 - integration: a page of `→ ∈ њ č š a₀ × b⁵ ▶ ■` under `Noto Sans CJK SC` compiles with
   **no** `Missing character` in the log.
 
+### 9b. Bare LaTeX commands in prose
+`tests/test_symbols.py`: a math command the model leaves in prose (no `$...$`) is wrapped
+in inline math instead of being escaped to a literal `\sqrt` — `\sqrt{289}`,
+`\frac{a}{2}`, `\cdot`, `\sqrt[3]{x}`, symbols inside the arguments; unknown commands
+are still escaped. Integration: a page of `c = \sqrt{289} = 17` compiles and the PDF text
+contains no `\sqrt`/`\frac`/`\cdot`.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

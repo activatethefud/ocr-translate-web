@@ -3,6 +3,23 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: fix literal "\sqrt" in prose
+
+The model sometimes emits LaTeX math commands in a **prose/target** field without `$...$`
+(e.g. `c = \sqrt{289} = 17`, `P = \frac{a h_a}{2}`, `4 \cdot 5`). `esc_text` escaped the
+backslash, so the PDF showed the literal string `\sqrt`.
+
+Fix (`ocrtran/latex.py`): `MATH_COMMANDS` + `_scan_math_command` detect a known math
+command (plus its `{}`/`[]`/`^`/`_` arguments, balanced) inside text and wrap it in inline
+math: `\sqrt{289}` -> `$\sqrt{289}$`. Applied in `_map_text` before escaping; unknown
+commands still escape as before; symbols inside the arguments go through `_map_math`.
+
+Rebuilt the affected jobs from cached OCR: the newest doc now shows a real radic; the only
+remaining `\` is legitimate set-difference notation `(A ∪ B) \ (B ∩ C)`. Tests: +6 in
+`test_symbols.py`. **392 passed** + 2 live.
+
+---
+
 ## Session: fix squares / missing glyphs in translated pages
 
 Squares were XeLaTeX "Missing character" drops. `Noto Serif` lacks math/geometry

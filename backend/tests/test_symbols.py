@@ -129,3 +129,50 @@ def test_theorem_name_cyrillic_uses_fallback():
 def test_latin_ext_inside_math_uses_text_and_fallback():
     out = esc("$Površina$", fallback="Noto Serif")
     assert "\\text{{\\glyphfallback š}}" in out
+
+
+# -- bare LaTeX math commands left in prose --------------------------------
+def test_bare_math_command_wrapped_in_inline_math():
+    assert esc(r"c = \sqrt{289} = 17") == r"c = $\sqrt{289}$ = 17"
+    assert esc(r"a \cdot b") == r"a $\cdot$ b"
+
+
+def test_bare_frac_with_two_groups():
+    assert esc(r"P = \frac{a h_a}{2}") == r"P = $\frac{a h_a}{2}$"
+
+
+def test_bare_math_command_with_optional_arg():
+    assert esc(r"\sqrt[3]{x}") == r"$\sqrt[3]{x}$"
+
+
+def test_unknown_command_is_still_escaped_not_math():
+    assert esc(r"unknown \foo{x}") == r"unknown \textbackslash{}foo\{x\}"
+
+
+def test_bare_math_command_with_symbol_inside():
+    # a unicode symbol inside the command arguments is still mapped
+    assert esc(r"\sqrt{a − b}") == r"$\sqrt{a - b}$"
+
+
+@pytest.mark.integration
+def test_bare_sqrt_compiles_and_has_no_literal_backslash(tiny_pdf, tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)],
+        workdir=str(tmp_path / "w"),
+        layout_mode="single",
+        output_page_size="a4",
+        font_main="Noto Serif",
+    )
+    target = r"Thus c = \sqrt{82 + 152} = \sqrt{289} = 17 and P = \frac{a h_a}{2} \cdot 2."
+    entry = {"page": 1, "tight": [], "blocks": [{"type": "prose", "source": "x", "target": target}]}
+    latex.run_build(cfg, {tiny_pdf.stem: [entry]})
+    pdfs = paths.page_pdfs(cfg.workdir, tiny_pdf.stem, 1)
+    assert pdfs
+    import fitz
+
+    with fitz.open(pdfs[0]) as d:
+        text = d[0].get_text()
+    assert "\\sqrt" not in text and "\\frac" not in text and "\\cdot" not in text
+    assert "289" in text and "17" in text
