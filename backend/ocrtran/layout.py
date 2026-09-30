@@ -99,6 +99,28 @@ def cluster_rows(figs: list[Fig], overlap: float = 0.5, gap: float = 0.10) -> li
     return rows
 
 
+def _flow_rows(figs: list[Fig], cfg) -> list[list[Fig]]:
+    """Pack figures left-to-right while they fit at their **natural** width.
+
+    If the figures don't fit side by side without being shrunk, they stay stacked
+    (a column). This is the "flow into rows when there is comfortably space" rule.
+    """
+    ordered = sorted(figs, key=lambda f: (round(f.yy[0], 3), f.xx[0]))
+    rows: list[list[Fig]] = []
+    cur: list[Fig] = []
+    total = 0.0
+    for fig in ordered:
+        w = max(0.05, fig.width)
+        if cur and (len(cur) >= cfg.max_figures_per_row or total + w > 0.95):
+            rows.append(cur)
+            cur, total = [], 0.0
+        cur.append(fig)
+        total += w
+    if cur:
+        rows.append(cur)
+    return rows
+
+
 def _grid_rows(figs: list[Fig], cfg) -> list[list[Fig]]:
     """Ignore the original layout: pack figures n-up, width-weighted."""
     rows: list[list[Fig]] = []
@@ -176,10 +198,12 @@ def build_items(blocks: list[dict], fig_info: dict[int, dict], cfg, page_ar: flo
                 j += 1
             if cfg.figure_layout == "stack":
                 rows = [[f] for f in run]
+            elif cfg.figure_layout == "preserve":
+                rows = cluster_rows(run)
             elif cfg.figure_layout == "grid":
                 rows = _grid_rows(run, cfg)
-            else:
-                rows = cluster_rows(run)
+            else:  # "flow" (default): left-to-right when they comfortably fit
+                rows = _flow_rows(run, cfg)
             for row in rows:
                 items.extend(_row_items(row, cfg, page_ar))
             i = j

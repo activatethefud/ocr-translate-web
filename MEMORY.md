@@ -3,6 +3,21 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: flow figures left-to-right when they fit
+
+Added `figure_layout="flow"` (now the **default**): figures on a page are packed
+left-to-right while they fit at their natural width (sum <= 0.95 text widths, <=
+max_figures_per_row); they stay stacked only when they would have to shrink. `preserve`
+keeps the source rows, `grid` always packs, `stack` is one per row.
+
+Demo: 3 small stacked figures -> `preserve` = 1 page 381pt tall (column); `flow` = 1 page
+160pt tall with all three side by side. On the user's `matematika I gimnazije` pages the
+figures are one-per-page (or separated by text), so flow correctly leaves them alone.
+
+Tests: +5 in `test_layout.py`. **366 passed** + 2 live.
+
+---
+
 ## Session: fix "There's no line here to end" (page-number footer)
 
 Bug: the new `build_page_tex` emitted the page-number footer as `\\par\vspace{...}`

@@ -32,7 +32,7 @@ class JobCreate(BaseModel):
     # page fitting / figures
     layout_mode: Literal["single", "auto"] = "auto"
     min_page_scale: float = 0.90
-    figure_layout: Literal["preserve", "grid", "stack"] = "preserve"
+    figure_layout: Literal["flow", "preserve", "grid", "stack"] = "flow"
     figure_max_width: float = 0.85
     figure_max_height: float = 0.38
     max_figures_per_row: int = 3

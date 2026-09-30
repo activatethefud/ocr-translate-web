@@ -179,3 +179,42 @@ def test_plan_auto_falls_back_to_estimation_without_measure():
     blocks = [{"type": "prose", "target": "a" * 4000} for _ in range(8)]  # ~1 page each
     plans = layout.plan_pages(cfg, blocks, {}, 595, 842, 468)
     assert len(plans) >= 2
+
+
+# -- flow layout (left to right when there is comfortably space) -----------
+_STACKED_NARROW = [
+    {"type": "figure", "bbox": [0.10, 0.10, 0.40, 0.25]},  # 0.30 wide, top
+    {"type": "figure", "bbox": [0.10, 0.40, 0.40, 0.55]},  # 0.30 wide, below it
+]
+
+
+def test_default_figure_layout_is_flow():
+    assert _cfg().figure_layout == "flow"
+
+
+def test_flow_packs_stacked_narrow_figures_into_one_row():
+    blocks = _STACKED_NARROW
+    items = layout.build_items(blocks, _fig_info(blocks), _cfg(figure_layout="flow"), 1.5)
+    assert len(items) == 1 and items[0].kind == "figrow"
+    assert len(items[0].row.figs) == 2  # now side by side, not a column
+
+
+def test_preserve_keeps_stacked_figures_stacked():
+    blocks = _STACKED_NARROW
+    items = layout.build_items(blocks, _fig_info(blocks), _cfg(figure_layout="preserve"), 1.5)
+    assert [i.kind for i in items] == ["figrow", "figrow"]
+
+
+def test_flow_keeps_wide_figures_stacked():
+    blocks = [
+        {"type": "figure", "bbox": [0.05, 0.10, 0.65, 0.30]},  # 0.60 wide
+        {"type": "figure", "bbox": [0.05, 0.40, 0.65, 0.60]},  # 0.60 wide
+    ]
+    items = layout.build_items(blocks, _fig_info(blocks), _cfg(figure_layout="flow"), 1.5)
+    assert [i.kind for i in items] == ["figrow", "figrow"]  # 0.6+0.6 > 0.95
+
+
+def test_flow_wraps_at_max_figures_per_row():
+    blocks = [{"type": "figure", "bbox": [0.02 + i * 0.24, 0.1, 0.24 + i * 0.24, 0.3]} for i in range(4)]
+    items = layout.build_items(blocks, _fig_info(blocks), _cfg(figure_layout="flow"), 1.5)
+    assert [len(i.row.figs) for i in items] == [3, 1]  # max_figures_per_row = 3

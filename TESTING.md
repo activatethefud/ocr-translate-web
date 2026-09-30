@@ -123,6 +123,8 @@ skip themselves when `xelatex` is missing.
   one part, `run_build` writes every part.
 - `backend/tests/test_assemble.py`: a split source page inserts **all** parts
   (translated_only and interleave).
+- flow layout (default): stacked narrow figures become one row; `preserve` keeps them
+  stacked; wide figures stay stacked (0.6+0.6 > 0.95); wrapping at `max_figures_per_row`.
 - `backend/tests/test_page_fitting.py` (integration, xelatex): a page with 3
   side-by-side figures + 8 paragraphs -> `single` = 1 page at ~0.86x, `auto` = 2
   pages at ~1.13x (text stays bigger); figure row stays side by side.

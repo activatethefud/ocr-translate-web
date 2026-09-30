@@ -133,7 +133,7 @@ export function App() {
   const [figureMode, setFigureMode] = useState<"off" | "tight" | "judge">("judge");
   const [layoutMode, setLayoutMode] = useState<"single" | "auto">("auto");
   const [minPageScale, setMinPageScale] = useState(0.9);
-  const [figureLayout, setFigureLayout] = useState<"preserve" | "grid" | "stack">("preserve");
+  const [figureLayout, setFigureLayout] = useState<"flow" | "preserve" | "grid" | "stack">("flow");
   const [figureMaxHeight, setFigureMaxHeight] = useState(0.38);
   const [outputName, setOutputName] = useState("");
   const [bookMode, setBookMode] = useState(false);
@@ -501,9 +501,10 @@ export function App() {
             <>
               <label>Figure layout
                 <select value={figureLayout}
-                        onChange={(e) => setFigureLayout(e.target.value as "preserve" | "grid" | "stack")}>
+                        onChange={(e) => setFigureLayout(e.target.value as "flow" | "preserve" | "grid" | "stack")}>
+                  <option value="flow">flow (side by side when they fit)</option>
                   <option value="preserve">preserve original arrangement</option>
-                  <option value="grid">auto grid (pack side by side)</option>
+                  <option value="grid">auto grid (always pack side by side)</option>
                   <option value="stack">stack (one per row)</option>
                 </select>
               </label>

@@ -94,6 +94,14 @@ Reproducing original rows is the highest-value, lowest-risk win: a source page t
 showed two diagrams side by side keeps them side by side instead of stacking two
 full-width images (~2× the height).
 
+### 5.1b Flow (default)
+
+`figure_layout="flow"` packs the figures of a page **left to right while they fit at
+their natural width** (sum ≤ 0.95 text widths, ≤ `max_figures_per_row`). If they don't
+fit without shrinking, they stay in a column. This means a page whose figures were
+*stacked* in the source still gets a compact row when there is comfortably space,
+instead of always staying a column. `preserve` keeps the original rows instead.
+
 ### 5.2 Figure sizing
 
 For each row with original widths `w_i = x1-x0`:
@@ -180,7 +188,7 @@ New `PipelineConfig` fields (all engine keys, sent from `JobCreate`):
 |---|---|---|
 | `layout_mode` | `auto` | `single` (today) · `auto` (rows + split) · `flow` (native pagination, future) |
 | `min_page_scale` | `0.90` | never shrink text below this; split instead |
-| `figure_layout` | `preserve` | `preserve` (source rows) · `grid` (n-up pack) · `stack` (today) |
+| `figure_layout` | `flow` | `flow` (side by side when they fit) · `preserve` (source rows) · `grid` (always pack) · `stack` (today) |
 | `figure_max_width` | `0.85` | cap a single figure |
 | `figure_max_height` | `0.38` | fraction of usable height |
 | `figure_min_width` | `0.18` | below this, reflow the row |

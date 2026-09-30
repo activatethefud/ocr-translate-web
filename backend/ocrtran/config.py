@@ -63,7 +63,7 @@ class PipelineConfig:
     # --- page fitting / figures ---
     layout_mode: str = "auto"  # single (shrink-to-fit) | auto (figure rows + split pages)
     min_page_scale: float = 0.90  # never shrink text below this; split instead
-    figure_layout: str = "preserve"  # preserve (source rows) | grid | stack
+    figure_layout: str = "flow"  # flow (fit rows left-to-right) | preserve | grid | stack
     figure_max_width: float = 0.85  # cap for a single figure (fraction of text width)
     figure_max_height: float = 0.38  # cap for a figure (fraction of usable page height)
     figure_min_width: float = 0.18  # below this a row is reflowed
@@ -146,8 +146,8 @@ class PipelineConfig:
             raise ConfigError("figure_mode must be off, tight or judge")
         if self.layout_mode not in ("single", "auto"):
             raise ConfigError("layout_mode must be 'single' or 'auto'")
-        if self.figure_layout not in ("preserve", "grid", "stack"):
-            raise ConfigError("figure_layout must be preserve, grid or stack")
+        if self.figure_layout not in ("flow", "preserve", "grid", "stack"):
+            raise ConfigError("figure_layout must be flow, preserve, grid or stack")
         if not (0.3 <= self.min_page_scale <= 1.0):
             raise ConfigError("min_page_scale must be between 0.3 and 1.0")
         if self.concurrency < 1:
