@@ -229,3 +229,48 @@ def test_run_ocr_parallel_8_preserves_page_order(tmp_path, tiny_pdf):
     entries = res[tiny_pdf.stem]
     assert [e["page"] for e in entries] == [1, 2]  # ordered despite parallel workers
     assert all(e["blocks"] for e in entries)
+
+
+def test_run_ocr_respects_throttle_limit(tmp_path, tiny_pdf):
+    """A reduced global throttle caps concurrent model calls below `concurrency`."""
+    import json
+    import threading
+    import time
+
+    from ocrtran.config import PipelineConfig
+    from ocrtran.ocr import run_ocr
+    from ocrtran.throttle import THROTTLE
+
+    THROTTLE.set_limit(1)  # force serial even though page concurrency is 8
+
+    class P:
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.active = 0
+            self.peak = 0
+
+        def vision(self, *a, **k):
+            with self.lock:
+                self.active += 1
+                self.peak = max(self.peak, self.active)
+            time.sleep(0.02)
+            with self.lock:
+                self.active -= 1
+            return json.dumps({"blocks": [{"type": "prose", "source": "a", "target": "b"}]})
+
+        def text(self, *a, **k):
+            return "[]"
+
+    prov = P()
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)],
+        workdir=str(tmp_path / "w"),
+        cache_dir=str(tmp_path / "c"),
+        source_lang="Serbian",
+        target_lang="English",
+        figure_mode="off",
+        concurrency=8,
+    )
+    res = run_ocr(cfg, prov)
+    assert [e["page"] for e in res[tiny_pdf.stem]] == [1, 2]
+    assert prov.peak <= 1  # the throttle kept it serial

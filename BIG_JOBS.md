@@ -208,6 +208,11 @@ boundaries editable before start.
 - **Book provider disables a reasoning model's hidden thinking**
   (`reasoning_effort="none"`) exactly like the engine, so dense pages return JSON instead
   of burning the token budget.
+- **Adaptive throttling** (`ocrtran/throttle.py`): a process-wide limiter gates every
+  model call. On HTTP 429/503 the provider reports it, the limit is cut (and `Retry-After`
+  respected) with a cooldown; after a quiet period the limit ramps back up one slot at a
+  time. Shared across pages, book chunks and batches. `MAX_CONCURRENT_CALLS` (default 16)
+  sets the ceiling; state is exposed in `/api/admin/stats` -> `throttle`.
 - Chunk retry: `attempts` is bumped on dispatch; a failed chunk is re-queued until
   `max_attempts` (3), then `failed`; a permanently failed chunk never stalls the book
   (finalize runs once all chunks are terminal).

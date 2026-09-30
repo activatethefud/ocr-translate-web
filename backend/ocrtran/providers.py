@@ -16,6 +16,8 @@ from typing import Any, Protocol
 
 import requests
 
+from .throttle import THROTTLE
+
 
 class ProviderError(RuntimeError):
     pass
@@ -26,6 +28,18 @@ class Provider(Protocol):
 
     def vision(self, image_path: str | Path, prompt: str, max_tokens: int | None = None) -> str: ...
     def text(self, prompt: str, max_tokens: int | None = None) -> str: ...
+
+
+def _retry_after(resp) -> float | None:
+    """Seconds from a ``Retry-After`` header, if present."""
+    headers = getattr(resp, "headers", None) or {}
+    raw = headers.get("Retry-After") or headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def _data_url(image_path: str | Path) -> str:
@@ -98,28 +112,50 @@ class OpenAICompatibleProvider:
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         last = ""
         for attempt in range(self.max_retries):
+            retry_after: float | None = None
+            rate_limited = False
             try:
                 resp = self._sess().post(self.api_base, headers=headers, json=body, timeout=self.timeout)
-                data = resp.json()
-                if "choices" in data:
-                    u = data.get("usage") or {}
-                    with self._lock:
-                        self.usage["prompt_tokens"] += int(u.get("prompt_tokens") or 0)
-                        self.usage["completion_tokens"] += int(u.get("completion_tokens") or 0)
-                        self.usage["calls"] += 1
-                    choice = data["choices"][0]
-                    text = choice.get("message", {}).get("content") or ""
-                    # a reasoning model can burn the whole budget thinking and return
-                    # nothing; retry with a bigger budget instead of failing the page
-                    if choice.get("finish_reason") == "length" and not text.strip() and max_tokens < 96000:
-                        max_tokens = min(96000, max_tokens * 2)
-                        continue
-                    return text
-                last = json.dumps(data)[:300]
+                status = int(getattr(resp, "status_code", 200) or 200)
+                retry_after = _retry_after(resp)
+                if status in (429, 503):
+                    # rate-limited: back off globally (fewer concurrent calls) and wait
+                    rate_limited = True
+                    THROTTLE.note_rate_limited(retry_after)
+                    last = f"HTTP {status}"
+                else:
+                    data = resp.json()
+                    if "choices" in data:
+                        THROTTLE.note_success()
+                        u = data.get("usage") or {}
+                        with self._lock:
+                            self.usage["prompt_tokens"] += int(u.get("prompt_tokens") or 0)
+                            self.usage["completion_tokens"] += int(u.get("completion_tokens") or 0)
+                            self.usage["calls"] += 1
+                        choice = data["choices"][0]
+                        text = choice.get("message", {}).get("content") or ""
+                        # a reasoning model can burn the whole budget thinking and
+                        # return nothing; retry with a bigger budget
+                        if (
+                            choice.get("finish_reason") == "length"
+                            and not text.strip()
+                            and max_tokens < 96000
+                        ):
+                            max_tokens = min(96000, max_tokens * 2)
+                            continue
+                        return text
+                    last = (
+                        f"HTTP {status}: " + json.dumps(data)[:300]
+                        if status >= 400
+                        else json.dumps(data)[:300]
+                    )
             except Exception as exc:  # noqa: BLE001 - retried
                 last = str(exc)
             if attempt < self.max_retries - 1:
-                time.sleep(self.backoff * (attempt + 1))
+                delay = self.backoff * (attempt + 1)
+                if rate_limited and retry_after:
+                    delay = max(delay, retry_after)
+                time.sleep(delay)
         raise ProviderError(f"{self.model}: API failed after {self.max_retries} tries: {last}")
 
     # -- public --------------------------------------------------------

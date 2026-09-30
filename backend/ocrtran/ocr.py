@@ -12,6 +12,7 @@ from .events import CancelToken, Emitter, Event, emit
 from .jsonutil import parse_json  # re-exported for callers/tests
 from .pages import parse_page_spec
 from .providers import Provider
+from .throttle import THROTTLE
 
 # Prompts use plain placeholders (not str.format) to avoid brace-escaping bugs.
 OCR_PROMPT = """You are an expert OCR and translation engine.
@@ -142,6 +143,7 @@ def run_ocr(
     cancel = cancel or CancelToken()
     results: dict[str, list[dict]] = {}
     sources = cfg.resolve_sources()
+    THROTTLE.ensure_ceiling(cfg.concurrency)
     emit(on_event, Event("ocr", "started", total=len(sources)))
 
     for si, source in enumerate(sources):
@@ -216,17 +218,20 @@ def run_ocr(
                 if cached and cached.get("blocks"):
                     result = {"blocks": cached["blocks"], "tight": cached.get("tight", [])}
                 else:
-                    result = ocr_image(
-                        provider,
-                        img,
-                        cfg.source_lang,
-                        cfg.target_lang,
-                        cfg.max_tokens,
-                        glossary=list(cfg.glossary or []) + list(cfg.auto_glossary or []),
-                        do_not_translate=cfg.do_not_translate,
-                        instructions=cfg.llm_instructions,
-                        figure_mode=cfg.figure_mode,
-                    )
+                    # gate model calls through the shared adaptive limiter so a
+                    # provider 429 backs off every page/job, not just this one
+                    with THROTTLE:
+                        result = ocr_image(
+                            provider,
+                            img,
+                            cfg.source_lang,
+                            cfg.target_lang,
+                            cfg.max_tokens,
+                            glossary=list(cfg.glossary or []) + list(cfg.auto_glossary or []),
+                            do_not_translate=cfg.do_not_translate,
+                            instructions=cfg.llm_instructions,
+                            figure_mode=cfg.figure_mode,
+                        )
                     cache.save_json(cpath, result)
                 figures.sanitize_result(result, img)
                 entry = {"page": pi, "img": str(img), **result}

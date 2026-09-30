@@ -22,6 +22,7 @@ from ocrtran import estimate, latex, paths
 from ocrtran.cache import load_json, save_json
 from ocrtran.pages import PageSpecError, parse_page_spec
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
+from ocrtran.throttle import THROTTLE
 
 from . import batch as batch_mod
 from . import books, db, guards, learning, ratelimit, storage
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
     app.state.dispatcher.start()
     app.state.batch = batch_mod.BatchDispatcher(settings, runner=app.state.runner)
     app.state.batch.start()
+    THROTTLE.set_ceiling(settings.max_concurrent_calls)
     try:
         yield
     finally:
@@ -431,6 +433,7 @@ def admin_stats(x_admin_token: str = Header(default="")) -> dict:
             "calls": sum(u.calls for u in usage),
         },
         "ratelimit": limiter.stats() if limiter else {},
+        "throttle": THROTTLE.stats(),
     }
 
 

@@ -49,6 +49,7 @@ class Settings:
     book_chunk_concurrency: int = 2
     rolling_glossary: bool = True
     batch_concurrency: int = 1  # documents processed sequentially by default
+    max_concurrent_calls: int = 16  # global ceiling for in-flight model calls
     worker_concurrency: int = 3
     page_concurrency: int = 4
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173"])
@@ -110,6 +111,7 @@ def load_settings() -> Settings:
         book_chunk_concurrency=_int("BOOK_CHUNK_CONCURRENCY", 2),
         rolling_glossary=os.environ.get("ROLLING_GLOSSARY", "1") not in ("0", "false", "no"),
         batch_concurrency=_int("BATCH_CONCURRENCY", 1),
+        max_concurrent_calls=_int("MAX_CONCURRENT_CALLS", 16),
         worker_concurrency=_int("WORKER_CONCURRENCY", 3),
         page_concurrency=_int("PAGE_CONCURRENCY", 4),
         cors_origins=[o.strip() for o in origins.split(",") if o.strip()],

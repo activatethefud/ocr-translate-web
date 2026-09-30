@@ -101,7 +101,17 @@ skip themselves when `xelatex` is missing.
   batch of 2 docs at `concurrency=8` + `figure_mode=judge` -> all pages present, 0
   empty, figures cropped, batch still sequential.
 
-### 6. Multi-document batches (no network)
+### 6. Adaptive throttling (no network)
+`backend/tests/test_throttle.py` + provider tests:
+- a 429 (or 503) cuts the global limit and sets a cooldown; `Retry-After` is parsed and
+  respected; the limit never drops below 1; the limit ramps back up after a quiet period;
+  `acquire` never exceeds the limit under many threads.
+- `OpenAICompatibleProvider` retries a 429 and reports it to the limiter.
+- `run_ocr` at `concurrency=8` with a reduced limit (2) stays within it and keeps order.
+- **Live**: a 6-page run forced to `limit=2` completed correctly (0 empty) and ramped the
+  limit back up to 3 on successes.
+
+### 7. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique
   `NN <name> (<target>)` output names, parent kind/status/total.

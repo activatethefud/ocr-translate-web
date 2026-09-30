@@ -3,6 +3,23 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: adaptive throttling (waits + concurrency reduction on limits)
+
+Added `ocrtran/throttle.py` — a process-wide `THROTTLE` limiter that gates model calls
+(`with THROTTLE:` around each page's OCR call). On HTTP **429/503** the provider calls
+`note_rate_limited(retry_after)`: the limit is **cut** (`min(limit//2, max(1,inflight//2))`,
+never < 1) and a **cooldown** is set (honours `Retry-After`, else 2s); the provider also
+sleeps `max(backoff, Retry-After)` before retrying. On success `note_success()` **ramps the
+limit back up** one slot per quiet period (5s) / interval (3s), capped at the ceiling.
+Shared across pages, book chunks and batches. `MAX_CONCURRENT_CALLS` (default 16) sets the
+ceiling at startup; live state in `/api/admin/stats -> throttle`.
+
+Tests: `tests/test_throttle.py` (7), provider 429 test, `run_ocr` respects a reduced limit.
+Live: 6-page run forced to limit=2 completed (0 empty) and ramped back to 3. Total:
+**329 passed** + 2 live.
+
+---
+
 ## Session: testing parallel page processing up to 8
 
 Added tests + live audits for the "Parallel pages" (concurrency) setting, 1..8:

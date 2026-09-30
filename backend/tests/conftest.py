@@ -19,6 +19,16 @@ os.environ["WORKER_CONCURRENCY"] = "2"
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 
 
+@pytest.fixture(autouse=True)
+def _reset_throttle():
+    """Keep the process-wide adaptive limiter from leaking between tests."""
+    from ocrtran.throttle import THROTTLE
+
+    THROTTLE.reset()
+    yield
+    THROTTLE.reset()
+
+
 @pytest.fixture
 def tiny_pdf(tmp_path: Path) -> Path:
     """A small 2-page text PDF."""

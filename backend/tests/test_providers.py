@@ -8,8 +8,10 @@ from ocrtran.providers import OpenAICompatibleProvider, ProviderError
 
 
 class FakeResponse:
-    def __init__(self, data):
+    def __init__(self, data, status_code=200, headers=None):
         self._data = data
+        self.status_code = status_code
+        self.headers = headers or {}
 
     def json(self):
         return self._data
@@ -108,3 +110,29 @@ def test_sessions_are_thread_local():
     for t in threads:
         t.join()
     assert len({id(s) for s in sessions}) == 3  # one session per thread
+
+
+def test_retry_after_parsing():
+    from ocrtran.providers import _retry_after
+
+    assert _retry_after(FakeResponse({}, headers={"Retry-After": "2.5"})) == 2.5
+    assert _retry_after(FakeResponse({}, headers={})) is None
+
+
+def test_429_reduces_throttle_and_retries():
+    from ocrtran.throttle import THROTTLE
+
+    THROTTLE.reset()
+    s = FakeSession(
+        [
+            FakeResponse(
+                {"error": {"message": "rate limited"}}, status_code=429, headers={"Retry-After": "1"}
+            ),
+            _ok("ok"),
+        ]
+    )
+    p = OpenAICompatibleProvider("http://x/chat/completions", "m", "k", session=s, max_retries=3, backoff=0)
+    assert p.text("hi") == "ok"
+    assert s.posts == 2  # retried after the 429
+    assert THROTTLE.events >= 1  # and told the limiter to back off
+    assert THROTTLE.limit < THROTTLE.ceiling
