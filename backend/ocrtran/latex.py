@@ -313,7 +313,7 @@ def build_page_tex(cfg: PipelineConfig, items: list, fig_names: dict) -> str:
     footer = ""
     if numbers:
         footer = (
-            "\\\\par\\vspace{8pt}\\begin{center}\\small "
+            "\\par\\vspace{8pt}\\begin{center}\\small "
             + " \\quad ".join(esc_text(n) for n in numbers)
             + "\\end{center}"
         )

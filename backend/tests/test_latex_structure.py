@@ -276,3 +276,36 @@ def test_run_build_writes_all_parts(tiny_pdf, tmp_path, xelatex_available):
     blocks = [{"type": "prose", "source": "x", "target": "word " * 500} for _ in range(5)]
     latex.run_build(cfg, {tiny_pdf.stem: [{"page": 1, "tight": [], "blocks": blocks}]})
     assert len(paths.page_pdfs(cfg.workdir, tiny_pdf.stem, 1)) >= 2
+
+
+def test_page_number_footer_has_no_stray_linebreak():
+    """Regression: the footer was emitted as '\\\\par' which is a stray line break."""
+    from ocrtran import latex, layout
+
+    cfg = PipelineConfig(sources=["a.pdf"])
+    items = [
+        layout.Item(kind="block", block={"type": "prose", "target": "hello"}),
+        layout.Item(kind="block", block={"type": "page_number", "text": "7"}),
+    ]
+    tex = latex.build_page_tex(cfg, items, {})
+    assert "\\par\\vspace{8pt}" in tex
+    assert "\\\\par" not in tex  # no stray \\ line break
+
+
+@pytest.mark.integration
+def test_page_with_page_number_compiles(tiny_pdf, tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    from ocrtran import latex, paths
+
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"), layout_mode="auto")
+    entry = {
+        "page": 1,
+        "tight": [],
+        "blocks": [
+            {"type": "prose", "source": "x", "target": "hello world"},
+            {"type": "page_number", "text": "7"},
+        ],
+    }
+    latex.run_build(cfg, {tiny_pdf.stem: [entry]})
+    assert paths.page_pdfs(cfg.workdir, tiny_pdf.stem, 1)  # was: no part compiled

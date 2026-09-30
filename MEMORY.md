@@ -3,6 +3,20 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: fix "There's no line here to end" (page-number footer)
+
+Bug: the new `build_page_tex` emitted the page-number footer as `\\par\vspace{...}`
+(Python over-escaping), i.e. a stray `\\` line break -> XeLaTeX "There's no line here
+to end" -> every page that had a `page_number` block **failed to compile**. In
+`translated_only` those pages silently fell back to the original scan (6 of 9 pages in
+the user's `matematika I gimnazije (English)-1.pdf` were untranslated images).
+
+Fix: `\\par\vspace{8pt}...` (single backslash). Added a unit test (no `\\par` in the
+tex) and an integration test that a page with a page number compiles. Regenerated the
+job's 9 pages from its `ocr.json` (no model calls) -> 11 pages, 0 empty.
+
+---
+
 ## Session: page fitting (consistent text size + smarter figure layout)
 
 Implemented `PAGE_FITTING.md` (M1-M4). New `ocrtran/layout.py` (pure): figure row
