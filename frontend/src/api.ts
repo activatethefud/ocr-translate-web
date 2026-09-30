@@ -177,6 +177,15 @@ export interface JobCreate {
   figure_pad?: number;
   figure_mode?: "off" | "tight" | "judge";
   output_name?: string;
+  // page fitting
+  layout_mode?: "single" | "auto";
+  min_page_scale?: number;
+  figure_layout?: "preserve" | "grid" | "stack";
+  figure_max_width?: number;
+  figure_max_height?: number;
+  max_figures_per_row?: number;
+  page_fill_min?: number;
+  keep_together?: boolean;
 }
 
 function newSessionId(): string {

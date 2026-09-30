@@ -3,6 +3,34 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: page fitting (consistent text size + smarter figure layout)
+
+Implemented `PAGE_FITTING.md` (M1-M4). New `ocrtran/layout.py` (pure): figure row
+clustering from bboxes (side-by-side figures stay side by side), n-up sizing with
+width/height caps, greedy pagination against a measured height budget, and a
+short-last-page merge bounded by `min_page_scale`.
+
+- `ocrtran/latex.py`: `_doc_header` split out; `_crop_figures` -> `fig_info`;
+  `_figure_row_tex` (side-by-side via minipages); `measure_items` (one `\setbox`
+  XeLaTeX pass returns per-item heights + `\textwidth`); `build_pages` returns
+  `[(part, tex)]`; `build_tex` kept for compatibility; `run_build` compiles every part.
+- Split page naming: `p01.pdf`, `p01-2.pdf`, ... via `paths.page_pdf(part=)` /
+  `paths.page_pdfs()`. `assemble` inserts every part (interleave/grouped/
+  translated_only; side_by_side puts part 1 beside the original then extra pages).
+  `books._collect_pages`/missing check and `verify.missing_pages` use all parts.
+- Bug found while building it: figures were double-scaled (`0.25\textwidth` inside a
+  `0.25\textwidth` minipage -> 6% wide). Now the image fills its minipage
+  (`width=\textwidth`). Also fixed `pack` recomputing the running height before
+  switching to carried (keep-together) items.
+- Config/UI: `layout_mode` (single|auto), `min_page_scale`, `figure_layout`
+  (preserve|grid|stack), `figure_max_width/height`, `max_figures_per_row`,
+  `page_fill_min`, `keep_together`; a "Page fitting" section in the SPA.
+
+Verified live (no model): 8 paragraphs + 3 side-by-side figures -> `single` = 1 page
+at 0.86x; `auto` = 2 pages at 1.13x. Tests: **359 passed** + 2 live.
+
+---
+
 ## Session: adaptive throttling (waits + concurrency reduction on limits)
 
 Added `ocrtran/throttle.py` — a process-wide `THROTTLE` limiter that gates model calls

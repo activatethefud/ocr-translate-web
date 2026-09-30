@@ -738,16 +738,19 @@ def rebuild_page(job_id: str, page: int, settings: Settings = Depends(_settings_
     if entry is None:
         raise HTTPException(404, "page not found")
     source = str(storage.source_path(settings, doc_id))
-    tex = latex.build_tex(cfg, "source", source, entry)
-    tex_path = paths.page_tex(cfg.workdir, "source", page)
-    tex_path.write_text(tex)
-    ok, log = latex.compile_tex(tex_path, tex_path.parent)
-    if not ok:
-        raise HTTPException(422, f"typesetting failed: {log[:300]}")
+    parts = latex.build_pages(cfg, "source", source, entry)
+    pdfs: list[str] = []
+    for part, tex in parts:
+        tex_path = paths.page_tex(cfg.workdir, "source", page, part)
+        tex_path.write_text(tex)
+        ok, log = latex.compile_tex(tex_path, tex_path.parent)
+        if not ok:
+            raise HTTPException(422, f"typesetting failed: {log[:300]}")
+        pdfs.append(str(paths.page_pdf(cfg.workdir, "source", page, part)))
     return OkOut(
         ok=True,
         detail="page rebuilt",
-        data={"page": page, "pdf": str(paths.page_pdf(cfg.workdir, "source", page))},
+        data={"page": page, "parts": len(pdfs), "pdfs": pdfs},
     )
 
 

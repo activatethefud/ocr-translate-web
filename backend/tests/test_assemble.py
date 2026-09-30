@@ -142,3 +142,28 @@ def test_assemble_translated_only_via_combine(tiny_pdf, tmp_path):
     out = fitz.open(outputs[base])
     assert out.page_count == 2
     out.close()
+
+
+def test_assemble_inserts_all_parts(tiny_pdf, tmp_path):
+    """A source page split into several translated parts inserts every part."""
+    workdir = tmp_path / "work"
+    base = tiny_pdf.stem
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(workdir), combine="translated_only")
+    make_translated_page(paths.page_pdf(workdir, base, 1), "A")
+    make_translated_page(paths.page_pdf(workdir, base, 1, 2), "B")
+    make_translated_page(paths.page_pdf(workdir, base, 2), "C")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 3  # p1 -> 2 pages, p2 -> 1 page
+    out.close()
+
+
+def test_assemble_interleave_with_parts(tiny_pdf, tmp_path):
+    workdir = tmp_path / "work"
+    base = tiny_pdf.stem
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(workdir), combine="interleave", bilingual=True)
+    make_translated_page(paths.page_pdf(workdir, base, 1), "A")
+    make_translated_page(paths.page_pdf(workdir, base, 1, 2), "B")
+    make_translated_page(paths.page_pdf(workdir, base, 2), "C")
+    out = fitz.open(assemble.assemble(cfg)[base])
+    assert out.page_count == 5  # orig1 + 2 parts + orig2 + 1 part
+    out.close()

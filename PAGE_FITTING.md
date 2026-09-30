@@ -1,8 +1,9 @@
 # Page fitting: consistent text size + smarter figure layout
 
-Status: **plan / not implemented**. This document specifies a feature to stop
-figure-heavy pages from shrinking their text to unreadable sizes, by (a) laying
-figures out intelligently and (b) flowing overflow onto additional pages.
+Status: **implemented** (M1–M4). See `ocrtran/layout.py`, `ocrtran/latex.py`
+(`build_pages`, `measure_items`, `_figure_row_tex`), `ocrtran/assemble.py`
+(`paths.page_pdfs`), and the `layout_mode` config / UI. Milestone 5 (native flow,
+wrapfig) remains future work.
 
 ## 1. Problem
 

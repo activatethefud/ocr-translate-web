@@ -60,6 +60,17 @@ class PipelineConfig:
     boundaries: list[dict] = field(default_factory=list)  # [{"page": n, "title": "..."}]
     figure_mode: str = "tight"  # off | tight | judge (extra model calls for better boxes)
 
+    # --- page fitting / figures ---
+    layout_mode: str = "auto"  # single (shrink-to-fit) | auto (figure rows + split pages)
+    min_page_scale: float = 0.90  # never shrink text below this; split instead
+    figure_layout: str = "preserve"  # preserve (source rows) | grid | stack
+    figure_max_width: float = 0.85  # cap for a single figure (fraction of text width)
+    figure_max_height: float = 0.38  # cap for a figure (fraction of usable page height)
+    figure_min_width: float = 0.18  # below this a row is reflowed
+    max_figures_per_row: int = 3
+    page_fill_min: float = 0.25  # merge a too-empty last page when it stays readable
+    keep_together: bool = True  # keep heading with the next block
+
     # --- assembly ---
     margin_pt: int = 24
     max_scale: float = 0.0  # 0 = no cap (enlarge to fill the page)
@@ -133,6 +144,12 @@ class PipelineConfig:
             raise ConfigError("figure_pad must be >= 0")
         if self.figure_mode not in ("off", "tight", "judge"):
             raise ConfigError("figure_mode must be off, tight or judge")
+        if self.layout_mode not in ("single", "auto"):
+            raise ConfigError("layout_mode must be 'single' or 'auto'")
+        if self.figure_layout not in ("preserve", "grid", "stack"):
+            raise ConfigError("figure_layout must be preserve, grid or stack")
+        if not (0.3 <= self.min_page_scale <= 1.0):
+            raise ConfigError("min_page_scale must be between 0.3 and 1.0")
         if self.concurrency < 1:
             raise ConfigError("concurrency must be >= 1")
 

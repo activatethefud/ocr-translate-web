@@ -35,12 +35,25 @@ def figure_path(workdir: str | Path, base: str, page: int, index: int) -> Path:
     return tex_dir(workdir, base) / f"fig_{page}_{index}.png"
 
 
-def page_pdf(workdir: str | Path, base: str, page: int) -> Path:
-    return tex_dir(workdir, base) / f"p{page:02d}.pdf"
+def page_pdf(workdir: str | Path, base: str, page: int, part: int = 1) -> Path:
+    name = f"p{page:02d}.pdf" if part <= 1 else f"p{page:02d}-{part}.pdf"
+    return tex_dir(workdir, base) / name
 
 
-def page_tex(workdir: str | Path, base: str, page: int) -> Path:
-    return tex_dir(workdir, base) / f"p{page:02d}.tex"
+def page_pdfs(workdir: str | Path, base: str, page: int) -> list[Path]:
+    """All output pages produced for one source page, in order."""
+    d = tex_dir(workdir, base)
+    out = []
+    first = d / f"p{page:02d}.pdf"
+    if first.exists():
+        out.append(first)
+    out.extend(sorted(d.glob(f"p{page:02d}-*.pdf")))
+    return out
+
+
+def page_tex(workdir: str | Path, base: str, page: int, part: int = 1) -> Path:
+    name = f"p{page:02d}.tex" if part <= 1 else f"p{page:02d}-{part}.tex"
+    return tex_dir(workdir, base) / name
 
 
 def out_dir(workdir: str | Path) -> Path:

@@ -206,3 +206,73 @@ def test_block_tex_ignores_page_number_in_flow():
     from ocrtran.latex import _block_tex
 
     assert _block_tex({"type": "page_number", "text": "3"}, {}) is None
+
+
+# -- page fitting (figure rows + pagination) --------------------------------
+def _row2():
+    from ocrtran import layout
+
+    b1, b2 = {"type": "figure"}, {"type": "figure"}
+    f1 = layout.Fig(block=b1, bbox=(0.0, 0.0, 0.3, 0.2), width=0.3, aspect=0.5)
+    f2 = layout.Fig(block=b2, bbox=(0.4, 0.0, 0.7, 0.2), width=0.3, aspect=0.5)
+    return layout.FigRow([f1, f2], [0.4, 0.4]), {id(b1): ("a.png", 0.3), id(b2): ("b.png", 0.3)}
+
+
+def test_figure_row_tex_side_by_side():
+    row, names = _row2()
+    from ocrtran import latex
+
+    tex = latex._figure_row_tex(row, names)
+    assert tex.count("\\begin{minipage}") == 2  # two figures on one line
+    assert "\\hfill" in tex
+    assert "a.png" in tex and "b.png" in tex
+
+
+def test_build_page_tex_renders_figure_row():
+    from ocrtran import latex, layout
+
+    row, names = _row2()
+    cfg = PipelineConfig(sources=["a.pdf"])
+    tex = latex.build_page_tex(cfg, [layout.Item(kind="figrow", row=row)], names)
+    assert "minipage" in tex and "\\begin{document}" in tex
+
+
+@pytest.mark.integration
+def test_build_pages_splits_long_content(tiny_pdf, tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    from ocrtran import latex
+
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"), layout_mode="auto", output_page_size="a4"
+    )
+    blocks = [{"type": "prose", "source": "x", "target": "word " * 500} for _ in range(5)]
+    parts = latex.build_pages(cfg, tiny_pdf.stem, str(tiny_pdf), {"page": 1, "tight": [], "blocks": blocks})
+    assert len(parts) >= 2  # overflows instead of shrinking
+    assert all("\\begin{document}" in tex for _, tex in parts)
+
+
+@pytest.mark.integration
+def test_build_pages_single_mode_one_part(tiny_pdf, tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    from ocrtran import latex
+
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"), layout_mode="single")
+    blocks = [{"type": "prose", "source": "x", "target": "word " * 500} for _ in range(5)]
+    parts = latex.build_pages(cfg, tiny_pdf.stem, str(tiny_pdf), {"page": 1, "tight": [], "blocks": blocks})
+    assert len(parts) == 1
+
+
+@pytest.mark.integration
+def test_run_build_writes_all_parts(tiny_pdf, tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    from ocrtran import latex, paths
+
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"), layout_mode="auto", output_page_size="a4"
+    )
+    blocks = [{"type": "prose", "source": "x", "target": "word " * 500} for _ in range(5)]
+    latex.run_build(cfg, {tiny_pdf.stem: [{"page": 1, "tight": [], "blocks": blocks}]})
+    assert len(paths.page_pdfs(cfg.workdir, tiny_pdf.stem, 1)) >= 2

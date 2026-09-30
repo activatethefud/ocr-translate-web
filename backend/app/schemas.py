@@ -29,6 +29,15 @@ class JobCreate(BaseModel):
     figure_px: int = 1800
     figure_pad: float = 0.06
     figure_mode: Literal["off", "tight", "judge"] = "judge"  # app default: best figures
+    # page fitting / figures
+    layout_mode: Literal["single", "auto"] = "auto"
+    min_page_scale: float = 0.90
+    figure_layout: Literal["preserve", "grid", "stack"] = "preserve"
+    figure_max_width: float = 0.85
+    figure_max_height: float = 0.38
+    max_figures_per_row: int = 3
+    page_fill_min: float = 0.25
+    keep_together: bool = True
     max_scale: float = 0.0
     text_width: str = "16.5cm"
     prompt_version: str = "3"

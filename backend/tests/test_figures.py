@@ -67,7 +67,10 @@ def test_build_tex_prefers_tight_box(tiny_pdf, tmp_path):
         "tight": [[0.2, 0.2, 0.3, 0.3]],
     }
     tex = latex.build_tex(cfg, tiny_pdf.stem, str(tiny_pdf), entry)
-    assert "0.30\\textwidth" in tex
+    # the tight box (width 0.1 of the page) is used, not the loose main box (0.6)
+    assert "{0.100\\textwidth}" in tex  # the figure minipage
+    assert "includegraphics[width=\\textwidth]{fig_1_0.png}" in tex
+    assert "0.600\\textwidth" not in tex
 
 
 def test_build_tex_creates_figure_file(tiny_pdf, tmp_path):

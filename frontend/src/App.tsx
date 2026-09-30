@@ -131,6 +131,10 @@ export function App() {
   const [scaleMode, setScaleMode] = useState<"fill" | "fit">("fill");
   const [pageConcurrency, setPageConcurrency] = useState(4);
   const [figureMode, setFigureMode] = useState<"off" | "tight" | "judge">("judge");
+  const [layoutMode, setLayoutMode] = useState<"single" | "auto">("auto");
+  const [minPageScale, setMinPageScale] = useState(0.9);
+  const [figureLayout, setFigureLayout] = useState<"preserve" | "grid" | "stack">("preserve");
+  const [figureMaxHeight, setFigureMaxHeight] = useState(0.38);
   const [outputName, setOutputName] = useState("");
   const [bookMode, setBookMode] = useState(false);
   const [chunkSize, setChunkSize] = useState(25);
@@ -262,6 +266,10 @@ export function App() {
       concurrency: pageConcurrency,
       figure_mode: figureMode,
       output_name: outputName.trim() || undefined,
+      layout_mode: layoutMode,
+      min_page_scale: minPageScale,
+      figure_layout: figureLayout,
+      figure_max_height: figureMaxHeight,
     };
     try {
       const j = queueMode
@@ -482,6 +490,35 @@ export function App() {
               <option value="judge">judge — LLM reviews &amp; expands boxes</option>
             </select>
           </label>
+          <h2>Page fitting</h2>
+          <label>When a page doesn't fit
+            <select value={layoutMode} onChange={(e) => setLayoutMode(e.target.value as "single" | "auto")}>
+              <option value="auto">keep text size — flow onto extra pages</option>
+              <option value="single">shrink to one page (old behaviour)</option>
+            </select>
+          </label>
+          {layoutMode === "auto" && (
+            <>
+              <label>Figure layout
+                <select value={figureLayout}
+                        onChange={(e) => setFigureLayout(e.target.value as "preserve" | "grid" | "stack")}>
+                  <option value="preserve">preserve original arrangement</option>
+                  <option value="grid">auto grid (pack side by side)</option>
+                  <option value="stack">stack (one per row)</option>
+                </select>
+              </label>
+              <div className="row">
+                <label>Min text size %
+                  <input type="number" min={80} max={100} value={Math.round(minPageScale * 100)}
+                         onChange={(e) => setMinPageScale(Math.max(0.8, Math.min(1, (Number(e.target.value) || 90) / 100)))} />
+                </label>
+                <label>Max figure height %
+                  <input type="number" min={15} max={60} value={Math.round(figureMaxHeight * 100)}
+                         onChange={(e) => setFigureMaxHeight(Math.max(0.15, Math.min(0.6, (Number(e.target.value) || 38) / 100)))} />
+                </label>
+              </div>
+            </>
+          )}
           <label>Glossary (one <code>source =&gt; target</code> per line)
             <textarea value={glossaryText} placeholder={"Prava => droite\nTalesova teorema => théorème de Thalès"}
                       onChange={(e) => setGlossaryText(e.target.value)} />

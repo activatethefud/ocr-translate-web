@@ -207,7 +207,7 @@ def missing_pages(cfg: PipelineConfig, results: dict[str, list[dict]]) -> dict[s
             continue
         with fitz.open(src) as doc:
             n = doc.page_count
-        miss = [p for p in parse_page_spec(cfg.pages, n) if not paths.page_pdf(cfg.workdir, base, p).exists()]
+        miss = [p for p in parse_page_spec(cfg.pages, n) if not paths.page_pdfs(cfg.workdir, base, p)]
         if miss:
             out[base] = miss
     return out

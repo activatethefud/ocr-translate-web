@@ -12,7 +12,8 @@ import subprocess
 import threading
 from pathlib import Path
 
-from . import cache, geometry, paths, render
+from . import cache, geometry, layout, paths, render
+from . import pages as pages_mod
 from .concurrency import parallel_map
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
@@ -121,7 +122,7 @@ def wrap_math(lx: str) -> str:
     return "\\[\n" + s + "\n\\]"
 
 
-def preamble(cfg: PipelineConfig) -> str:
+def _doc_header(cfg: PipelineConfig) -> str:
     lb = ""
     if cfg.linebreak_locale:
         lb = f'\\XeTeXlinebreaklocale "{cfg.linebreak_locale}"\n\\XeTeXlinebreakskip=0pt plus 1pt\n'
@@ -133,8 +134,11 @@ def preamble(cfg: PipelineConfig) -> str:
         f"\\setmainfont{{{cfg.font_main}}}\n{lb}{cfg.extra_preamble}\n"
         "\\setlength{\\parindent}{0pt}\\setlength{\\parskip}{5pt}\n"
         "\\begin{document}\n"
-        f"\\begin{{minipage}}{{{cfg.text_width}}}\n"
     )
+
+
+def preamble(cfg: PipelineConfig) -> str:
+    return _doc_header(cfg) + f"\\begin{{minipage}}{{{cfg.text_width}}}\n"
 
 
 POSTAMBLE = "\\end{minipage}\n\\end{document}\n"
@@ -222,22 +226,15 @@ def _block_tex(b: dict, fig_names: dict) -> str | None:
     return text_to_tex(textsrc) if textsrc else None
 
 
-def build_tex(
-    cfg: PipelineConfig,
-    base: str,
-    source_pdf: str,
-    entry: dict,
-) -> str:
-    """Turn one OCR page entry into a LaTeX document (and crop its figures)."""
+def _crop_figures(cfg: PipelineConfig, base: str, source_pdf: str, entry: dict) -> tuple[dict, dict]:
+    """Crop this page's figures; return (fig_names, fig_info) keyed by id(block)."""
     page = entry["page"]
     blocks = entry.get("blocks", [])
-    figs = [b for b in blocks if b.get("type") == "figure"]
     tight = entry.get("tight") or []
-    fig_names: dict[int, tuple[str, float]] = {}
+    figs = [b for b in blocks if b.get("type") == "figure"]
+    fig_names: dict[int, tuple[str | None, float]] = {}
+    fig_info: dict[int, dict] = {}
     for i, fig in enumerate(figs):
-        # Prefer the dedicated tight box. The main-call box is sometimes the whole
-        # page (bad), and unioning with it made every crop the full page, so we only
-        # fall back to it when there is no tight box. render_figure still pads.
         main_bb = fig.get("bbox")
         tight_bb = tight[i] if i < len(tight) and tight[i] else None
         bb = geometry.choose_box(tight_bb, main_bb)
@@ -247,12 +244,64 @@ def build_tex(
         dest = paths.figure_path(cfg.workdir, base, page, i)
         ok = render.render_figure(source_pdf, page, bb, dest, cfg.figure_px, pad_frac=cfg.figure_pad)
         frac = max(0.05, float(bb[2]) - float(bb[0]))
-        # if the crop could not be written, keep the caption but no \includegraphics
-        fig_names[id(fig)] = (name, frac) if (ok and dest.exists()) else (None, frac)
+        has_img = bool(ok and dest.exists())
+        aspect = 1.0
+        if has_img:
+            try:
+                from PIL import Image
 
+                with Image.open(dest) as im:
+                    w, h = im.size
+                aspect = (h / w) if w else 1.0
+            except Exception:  # noqa: BLE001
+                aspect = 1.0
+        fig_names[id(fig)] = (name if has_img else None, frac)
+        fig_info[id(fig)] = {
+            "name": name if has_img else None,
+            "bbox": [float(x) for x in bb],
+            "width": frac,
+            "aspect": aspect,
+            "caption": str(fig.get("caption") or ""),
+        }
+    return fig_names, fig_info
+
+
+def _figure_row_tex(row: layout.FigRow, fig_names: dict) -> str:
+    """Render figures side by side (widths were chosen by the layout planner)."""
+    parts = []
+    for fig, w in zip(row.figs, row.widths, strict=True):
+        entry = fig_names.get(id(fig.block))
+        name = entry[0] if entry else None
+        caption = str(fig.caption or "").strip()
+        w = max(0.05, min(0.98, w))
+        inner = ""
+        if name:
+            # the minipage is already {w}\textwidth wide, so the image fills it
+            inner = f"\\includegraphics[width=\\textwidth]{{{name}}}"
+        if caption:
+            cap = text_to_tex(caption)
+            inner = (inner + "\\\\[1pt]\\small " + cap) if inner else ("\\small\\textit{" + cap + "}")
+        if not inner:
+            continue
+        parts.append(
+            "\\begin{minipage}[t]{" + f"{w:.3f}" + "\\textwidth}\\centering " + inner + "\\end{minipage}"
+        )
+    if not parts:
+        return ""
+    return "\\begin{center}" + "\\hfill".join(parts) + "\\end{center}"
+
+
+def build_page_tex(cfg: PipelineConfig, items: list, fig_names: dict) -> str:
+    """One planned output page -> a standalone LaTeX document."""
     body: list[str] = []
     numbers: list[str] = []
-    for b in blocks:
+    for it in items:
+        if it.kind == "figrow":
+            tex = _figure_row_tex(it.row, fig_names)
+            if tex:
+                body.append(tex)
+            continue
+        b = it.block or {}
         if b.get("type") == "page_number":
             num = str(b.get("text") or b.get("target") or b.get("source") or "").strip()
             if num:
@@ -261,12 +310,10 @@ def build_tex(
         rendered = _block_tex(b, fig_names)
         if rendered:
             body.append(rendered)
-    # page numbers found on the original are reproduced at the bottom of the
-    # translated page (footer), so numbering survives the translation
     footer = ""
     if numbers:
         footer = (
-            "\\par\\vspace{8pt}\\begin{center}\\small "
+            "\\\\par\\vspace{8pt}\\begin{center}\\small "
             + " \\quad ".join(esc_text(n) for n in numbers)
             + "\\end{center}"
         )
@@ -274,6 +321,89 @@ def build_tex(
     if footer:
         text += "\n" + footer
     return text + "\n" + POSTAMBLE
+
+
+_ITEMH = re.compile(r"ITEMH (\d+) ([\d.]+)pt")
+_TEXTW = re.compile(r"TEXTW ([\d.]+)pt")
+
+
+def _parse_measures(log: str, n: int) -> dict | None:
+    heights = [0.0] * n
+    textw = None
+    found = False
+    for line in (log or "").splitlines():
+        m = _ITEMH.search(line)
+        if m:
+            heights[int(m.group(1))] = float(m.group(2))
+            found = True
+        m2 = _TEXTW.search(line)
+        if m2:
+            textw = float(m2.group(1))
+    return {"heights": heights, "textw": textw} if found else None
+
+
+def measure_items(cfg: PipelineConfig, base: str, page: int, items: list, fig_names: dict) -> dict | None:
+    """Measure each item's height with one ``\\setbox`` XeLaTeX pass.
+
+    Returns ``{"heights": [...], "textw": pt}`` or ``None`` if it could not run.
+    """
+    tdir = paths.tex_dir(cfg.workdir, base)
+    tdir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        _doc_header(cfg),
+        "\\newbox\\mb",
+        "\\setbox\\mb=\\vbox{\\begin{minipage}{"
+        + cfg.text_width
+        + "}\\typeout{TEXTW \\the\\textwidth}\\end{minipage}}",
+    ]
+    for i, it in enumerate(items):
+        tex = _figure_row_tex(it.row, fig_names) if it.kind == "figrow" else _block_tex(it.block, fig_names)
+        if not tex:
+            lines.append(f"\\typeout{{ITEMH {i} 0pt}}")
+            continue
+        lines.append(
+            "\\setbox\\mb=\\vbox{\\begin{minipage}{" + cfg.text_width + "}" + tex + "\\end{minipage}}"
+        )
+        lines.append(f"\\typeout{{ITEMH {i} \\the\\dimexpr\\ht\\mb+\\dp\\mb\\relax}}")
+    lines.append("\\end{document}")
+    mpath = tdir / f"m{page:02d}.tex"
+    mpath.write_text("\n".join(lines))
+    ok, _ = compile_tex(mpath, tdir)
+    log_path = mpath.with_suffix(".log")
+    if not log_path.exists():
+        return None
+    try:
+        return _parse_measures(log_path.read_text(errors="ignore"), len(items))
+    except OSError:
+        return None
+
+
+def _output_dims(cfg: PipelineConfig, source_pdf: str) -> tuple[float, float]:
+    import fitz
+
+    with fitz.open(source_pdf) as doc:
+        w, h = doc[0].rect.width, doc[0].rect.height
+    return pages_mod.output_size(cfg.output_page_size, w, h)
+
+
+def build_pages(cfg: PipelineConfig, base: str, source_pdf: str, entry: dict) -> list[tuple[int, str]]:
+    """Plan + typeset one source page into ``[(part, tex), ...]`` output pages."""
+    fig_names, fig_info = _crop_figures(cfg, base, source_pdf, entry)
+    out_w, out_h = _output_dims(cfg, source_pdf)
+    textw_pt = layout.parse_length_pt(cfg.text_width)
+    page = int(entry.get("page") or 1)
+
+    def measure(items):
+        return measure_items(cfg, base, page, items, fig_names)
+
+    plans = layout.plan_pages(cfg, entry.get("blocks", []), fig_info, out_w, out_h, textw_pt, measure)
+    return [(part, build_page_tex(cfg, items, fig_names)) for part, items in enumerate(plans, start=1)]
+
+
+def build_tex(cfg: PipelineConfig, base: str, source_pdf: str, entry: dict) -> str:
+    """Backwards-compatible: the first output page's TeX ("" when there is none)."""
+    pages = build_pages(cfg, base, source_pdf, entry)
+    return pages[0][1] if pages else ""
 
 
 def compile_tex(tex_path: Path, workdir: Path, timeout: int = 120) -> tuple[bool, str]:
@@ -334,17 +464,24 @@ def run_build(
                 # and the page is reported as missing (not a silent blank page)
                 return
             page = entry["page"]
-            tex = build_tex(cfg, base, source_pdf, entry)
-            tex_path = paths.page_tex(cfg.workdir, base, page)
-            # Distinct pNN.tex basenames mean parallel compiles share the dir safely.
-            tex_path.write_text(tex)
-            ok, log = compile_tex(tex_path, tdir)
-            if ok:
-                with lock:
-                    pdfs.append(paths.page_pdf(cfg.workdir, base, page))
-                emit(on_event, Event("build", "ok", base=base, page=page))
-            else:
-                emit(on_event, Event("build", "error", base=base, page=page, message=log))
+            parts = build_pages(cfg, base, source_pdf, entry)
+            built = 0
+            for part, tex in parts:
+                tex_path = paths.page_tex(cfg.workdir, base, page, part)
+                tex_path.write_text(tex)
+                ok, log = compile_tex(tex_path, tdir)
+                if ok:
+                    with lock:
+                        pdfs.append(paths.page_pdf(cfg.workdir, base, page, part))
+                    built += 1
+                    emit(
+                        on_event,
+                        Event("build", "ok", base=base, page=page, data={"part": part, "parts": len(parts)}),
+                    )
+                else:
+                    emit(on_event, Event("build", "error", base=base, page=page, message=log))
+            if built == 0 and parts:
+                emit(on_event, Event("build", "error", base=base, page=page, message="no part compiled"))
 
         parallel_map(build_one, entries, cfg.concurrency)
         out[base] = sorted(pdfs, key=lambda p: p.name)

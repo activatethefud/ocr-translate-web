@@ -111,7 +111,23 @@ skip themselves when `xelatex` is missing.
 - **Live**: a 6-page run forced to `limit=2` completed correctly (0 empty) and ramped the
   limit back up to 3 on successes.
 
-### 7. Multi-document batches (no network)
+### 7. Page fitting (figure rows + splitting)
+- `backend/tests/test_layout.py` (pure): length parsing; figure row clustering
+  (side-by-side vs stacked, gap/overlap thresholds, top-to-bottom order); sizing
+  (relative widths, fit scaling, width/height caps, too-narrow -> split); item
+  building (consecutive figures grouped, stack/grid modes, heading keep-with-next);
+  height estimation; `pack` (budget, heading not orphaned) and `merge_short_last`;
+  `plan_pages` in single/auto modes with measured heights.
+- `backend/tests/test_latex_structure.py`: `_figure_row_tex` side by side,
+  `build_page_tex` renders a row, `build_pages` splits long content / single mode is
+  one part, `run_build` writes every part.
+- `backend/tests/test_assemble.py`: a split source page inserts **all** parts
+  (translated_only and interleave).
+- `backend/tests/test_page_fitting.py` (integration, xelatex): a page with 3
+  side-by-side figures + 8 paragraphs -> `single` = 1 page at ~0.86x, `auto` = 2
+  pages at ~1.13x (text stays bigger); figure row stays side by side.
+
+### 8. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique
   `NN <name> (<target>)` output names, parent kind/status/total.

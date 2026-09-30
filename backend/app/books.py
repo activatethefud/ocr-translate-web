@@ -262,10 +262,9 @@ class BookDispatcher:
         book_tex = storage.work_dir(self.settings, doc_id, book_id) / "source" / "tex"
         book_tex.mkdir(parents=True, exist_ok=True)
         for page in range(chunk_range[0], chunk_range[1] + 1):
-            src = paths.page_pdf(cfg.workdir, "source", page)
-            if src.exists():
-                shutil.copy2(src, book_tex / f"p{page:02d}.pdf")
-            figdir = src.parent
+            for src in paths.page_pdfs(cfg.workdir, "source", page):
+                shutil.copy2(src, book_tex / src.name)
+            figdir = paths.tex_dir(cfg.workdir, "source")
             for fig in figdir.glob(f"fig_{page}_*.png"):
                 shutil.copy2(fig, book_tex / fig.name)
 

@@ -6,6 +6,18 @@ A page spec is a comma-separated list of 1-based pages and ranges, e.g.
 
 from __future__ import annotations
 
+A4 = (595.28, 841.89)
+LETTER = (612.0, 792.0)
+
+
+def output_size(page_size: str, src_w: float, src_h: float) -> tuple[float, float]:
+    """Target output page size: ``match`` the source, or A4 / Letter."""
+    if page_size == "a4":
+        return A4
+    if page_size == "letter":
+        return LETTER
+    return (src_w, src_h)
+
 
 class PageSpecError(ValueError):
     pass

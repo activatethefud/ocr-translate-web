@@ -54,9 +54,8 @@ def _place(page: fitz.Page, doc: fitz.Document, pno: int, area: fitz.Rect, max_s
     page.show_pdf_page(fitz.Rect(x0, y0, x0 + w, y0 + h), doc, pno)
 
 
-def _translated_pdf(cfg: PipelineConfig, base: str, page: int) -> Path | None:
-    p = paths.page_pdf(cfg.workdir, base, page)
-    return p if p.exists() else None
+def _translated_pdfs(cfg: PipelineConfig, base: str, page: int) -> list[Path]:
+    return paths.page_pdfs(cfg.workdir, base, page)
 
 
 def _add_original(out: fitz.Document, src: fitz.Document, i: int) -> None:
@@ -73,17 +72,18 @@ def _add_translation(
     area: fitz.Rect,
     fallback: bool = False,
 ) -> None:
-    tp = _translated_pdf(cfg, base, page_no)
-    if tp is None:
+    tps = _translated_pdfs(cfg, base, page_no)
+    if not tps:
         # interleave/grouped already include the original page, so only fall back in
         # translated_only (where there is no original elsewhere).
         if fallback:
             _add_original(out, src, page_no - 1)
         return
-    cd = fitz.open(str(tp))
-    page = out.new_page(width=size[0], height=size[1])
-    _place(page, cd, 0, area, _eff_max_scale(cfg))
-    cd.close()
+    for tp in tps:
+        cd = fitz.open(str(tp))
+        page = out.new_page(width=size[0], height=size[1])
+        _place(page, cd, 0, area, _eff_max_scale(cfg))
+        cd.close()
 
 
 def assemble(
@@ -149,11 +149,23 @@ def assemble(
                     mark(p)
                     page = out.new_page(width=outW, height=outH)
                     _place(page, src, i, left, _eff_max_scale(cfg))  # original left
-                    tp = _translated_pdf(cfg, base, p)
-                    if tp is not None:
-                        cd = fitz.open(str(tp))
+                    tps = _translated_pdfs(cfg, base, p)
+                    if tps:
+                        cd = fitz.open(str(tps[0]))
                         _place(page, cd, 0, right, _eff_max_scale(cfg))
                         cd.close()
+                        # a page split into several parts: the rest go on their own page
+                        for extra in tps[1:]:
+                            cd = fitz.open(str(extra))
+                            pg = out.new_page(width=outW, height=outH)
+                            _place(
+                                pg,
+                                cd,
+                                0,
+                                fitz.Rect(margin, margin, outW - margin, outH - margin),
+                                _eff_max_scale(cfg),
+                            )
+                            cd.close()
                 elif keep_unselected:
                     mark(p)
                     _add_original(out, src, i)
