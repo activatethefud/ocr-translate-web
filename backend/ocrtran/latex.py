@@ -203,6 +203,8 @@ def _block_tex(b: dict, fig_names: dict) -> str | None:
         if t == "math" and number and w.endswith("\\]"):
             w = w[:-2] + " \\qquad \\text{" + esc_text(number) + "} \\]"
         return w
+    if t == "page_number":
+        return None  # placed as a footer by build_tex, not in the reading flow
     if t == "figure":
         entry = fig_names.get(id(b))
         caption = str(b.get("caption") or "").strip()
@@ -249,11 +251,29 @@ def build_tex(
         fig_names[id(fig)] = (name, frac) if (ok and dest.exists()) else (None, frac)
 
     body: list[str] = []
+    numbers: list[str] = []
     for b in blocks:
+        if b.get("type") == "page_number":
+            num = str(b.get("text") or b.get("target") or b.get("source") or "").strip()
+            if num:
+                numbers.append(num)
+            continue
         rendered = _block_tex(b, fig_names)
         if rendered:
             body.append(rendered)
-    return preamble(cfg) + "\n\n".join(body) + "\n" + POSTAMBLE
+    # page numbers found on the original are reproduced at the bottom of the
+    # translated page (footer), so numbering survives the translation
+    footer = ""
+    if numbers:
+        footer = (
+            "\\par\\vspace{8pt}\\begin{center}\\small "
+            + " \\quad ".join(esc_text(n) for n in numbers)
+            + "\\end{center}"
+        )
+    text = preamble(cfg) + "\n\n".join(body)
+    if footer:
+        text += "\n" + footer
+    return text + "\n" + POSTAMBLE
 
 
 def compile_tex(tex_path: Path, workdir: Path, timeout: int = 120) -> tuple[bool, str]:

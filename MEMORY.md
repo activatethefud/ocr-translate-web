@@ -3,6 +3,20 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: preserve page numbers on translated pages
+
+The vision prompt (schema v2 -> `prompt_version="3"`) now instructs the model: if the
+original page shows a page number, emit exactly one `page_number` block with `text` set
+to the number as printed (no translation, no digit conversion). `latex.build_tex` pulls
+those blocks out of the reading flow and renders them as a small centered **footer** at
+the bottom of the translated page; `_block_tex` returns `None` for them. `prompt_version`
+bumped 2 -> 3 so caches refresh.
+
+Live check: a page with a "42" footer -> model returned `{"type":"page_number","text":"42"}`,
+output PDF contains `42` after the prose. +3 tests.
+
+---
+
 ## Session: multi-document sequential batches
 
 Added `app/batch.py` (`create_batch` + `BatchDispatcher`) and UI/API support for

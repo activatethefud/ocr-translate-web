@@ -31,7 +31,7 @@ class JobCreate(BaseModel):
     figure_mode: Literal["off", "tight", "judge"] = "judge"  # app default: best figures
     max_scale: float = 0.0
     text_width: str = "16.5cm"
-    prompt_version: str = "2"
+    prompt_version: str = "3"
     glossary: list[GlossaryItem] = []
     do_not_translate: list[str] = []
     llm_instructions: str = ""

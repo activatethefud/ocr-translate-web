@@ -183,3 +183,26 @@ def test_build_tex_skips_empty_blocks(tiny_pdf, tmp_path):
     # run_build must not produce a page PDF for a block-less page
     latex.run_build(cfg, {tiny_pdf.stem: [entry]})
     assert not paths.page_pdf(cfg.workdir, tiny_pdf.stem, 1).exists()
+
+
+def test_page_number_is_rendered_as_footer(tiny_pdf, tmp_path):
+    from ocrtran import latex
+
+    cfg = PipelineConfig(sources=[str(tiny_pdf)], workdir=str(tmp_path / "w"))
+    entry = {
+        "page": 1,
+        "tight": [],
+        "blocks": [
+            {"type": "prose", "source": "hello", "target": "hello"},
+            {"type": "page_number", "text": "12"},
+        ],
+    }
+    tex = latex.build_tex(cfg, tiny_pdf.stem, str(tiny_pdf), entry)
+    assert "12" in tex
+    assert tex.index("12") > tex.index("hello")  # footer comes after the content
+
+
+def test_block_tex_ignores_page_number_in_flow():
+    from ocrtran.latex import _block_tex
+
+    assert _block_tex({"type": "page_number", "text": "3"}, {}) is None

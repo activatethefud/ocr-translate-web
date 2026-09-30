@@ -27,7 +27,7 @@ class PipelineConfig:
     model: str = "deepseek-flash"
     timeout: int = 600
     max_tokens: int = 32000
-    prompt_version: str = "2"
+    prompt_version: str = "3"
     reasoning_effort: str = "none"  # disable hidden thinking (deepseek-flash)
 
     # --- input ---

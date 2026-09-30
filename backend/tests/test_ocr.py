@@ -203,3 +203,9 @@ def test_auto_glossary_does_not_bust_cache(tmp_path, tiny_pdf):
     assert len(prov.calls) == n  # auto glossary growth -> still a cache hit
     run(glossary=[{"source": "x", "target": "y"}])
     assert len(prov.calls) > n  # a *user* glossary edit invalidates
+
+
+def test_prompt_requests_page_numbers():
+    p = build_ocr_prompt("Serbian", "English")
+    assert '"page_number"' in p
+    assert "page number" in p.lower()

@@ -26,6 +26,7 @@ Return STRICT JSON (no markdown fences):
    {"type":"table","latex":"..."},
    {"type":"figure","description":"...","bbox":[x0,y0,x1,y1],"caption":"..."},
    {"type":"quote","source":"...","target":"..."},
+   {"type":"page_number","text":"5"},
    {"type":"theorem","kind":"Theorem","name":"...","source":"...","target":"..."}
  ]
 }
@@ -45,6 +46,10 @@ Rules:
   matrices, set notation, vectors. Use standard amsmath.
 - Keep inline math inside $...$ in both "source" and "target".
 - For tables output a complete \\begin{array}...\\end{array}.
+- If the original page shows a page number (usually in a header or footer), add exactly
+  one `page_number` block with "text" set to the number exactly as printed. Do not
+  translate it or convert the digits, and do not also include it as prose. If there is
+  no page number on the page, do not add this block.
 - For figures give an accurate tight "bbox" and, if present, a "caption".
 - Return only the JSON.
 """
