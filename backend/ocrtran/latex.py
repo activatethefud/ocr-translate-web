@@ -586,28 +586,37 @@ def _crop_figures(cfg: PipelineConfig, base: str, source_pdf: str, entry: dict) 
 
 
 def _figure_row_tex(row: layout.FigRow, fig_names: dict, fallback: str = "") -> str:
-    """Render figures side by side (widths were chosen by the layout planner)."""
-    parts = []
-    for fig, w in zip(row.figs, row.widths, strict=True):
+    """Figures side by side, with captions **full width** below the row.
+
+    Putting each caption inside its (narrow) figure minipage wrapped long captions
+    into a tall narrow column; captions now span the text width instead.
+    """
+    minis: list[str] = []
+    caps: list[str] = []
+    multi = len(row.figs) > 1
+    for i, (fig, w) in enumerate(zip(row.figs, row.widths, strict=True)):
         entry = fig_names.get(id(fig.block))
         name = entry[0] if entry else None
         caption = str(fig.caption or "").strip()
         w = max(0.05, min(0.98, w))
-        inner = ""
         if name:
             # the minipage is already {w}\textwidth wide, so the image fills it
-            inner = f"\\includegraphics[width=\\textwidth]{{{name}}}"
+            minis.append(
+                "\\begin{minipage}[t]{"
+                + f"{w:.3f}"
+                + "\\textwidth}\\centering \\includegraphics[width=\\textwidth]{"
+                + name
+                + "}\\end{minipage}"
+            )
         if caption:
-            cap = text_to_tex(caption, fallback)
-            inner = (inner + "\\\\[1pt]\\small " + cap) if inner else ("\\small\\textit{" + cap + "}")
-        if not inner:
-            continue
-        parts.append(
-            "\\begin{minipage}[t]{" + f"{w:.3f}" + "\\textwidth}\\centering " + inner + "\\end{minipage}"
-        )
-    if not parts:
-        return ""
-    return "\\begin{center}" + "\\hfill".join(parts) + "\\end{center}"
+            label = f"({chr(97 + i)}) " if multi else ""
+            caps.append(label + text_to_tex(caption, fallback))
+    out: list[str] = []
+    if minis:
+        out.append("\\begin{center}" + "\\hfill".join(minis) + "\\end{center}")
+    if caps:
+        out.append("\\begin{center}\\small " + " \\quad ".join(caps) + "\\end{center}")
+    return "\n".join(out)
 
 
 def build_page_tex(cfg: PipelineConfig, items: list, fig_names: dict) -> str:

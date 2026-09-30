@@ -16,7 +16,40 @@ from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
 from .providers import Provider
 
-TEXTCMD = re.compile(r"\\(?:text|textit|textrm|textnormal|mbox)\s*\{")
+# text-command variants that carry translatable content inside math/tables
+TEXTCMD = re.compile(
+    r"\\(?:text|textit|textbf|textsf|texttt|textsc|textsl|textup|textmd|textrm|"
+    r"textnormal|emph|mbox|hbox|mathrm|mathbf|mathit)\s*\{"
+)
+# a whole bare table cell (letters/digits/spaces/punct) not inside a command
+BARE_CELL = re.compile(
+    r"(?<![\\\w{])([A-Za-z0-9\u00C0-\u024F\u0400-\u04FF]"
+    r"[A-Za-z0-9\u00C0-\u024F\u0400-\u04FF ,.\-()/]{1,})"
+)
+LATEX_KEYWORDS = {
+    "array",
+    "tabular",
+    "multicolumn",
+    "multirow",
+    "hline",
+    "cline",
+    "begin",
+    "end",
+    "textwidth",
+    "linewidth",
+    "columnwidth",
+    "textheight",
+    "dots",
+    "cdots",
+    "ldots",
+    "vdots",
+    "ddots",
+    "quad",
+    "qquad",
+    "rule",
+    "hspace",
+    "vspace",
+}
 # Latin / Latin-Extended / Cyrillic words (extend for other source scripts).
 WORD = re.compile(r"[A-Za-z\u00C0-\u024F\u0400-\u04FF]{3,}")
 MATH_WORDS = {
@@ -84,6 +117,47 @@ def is_source_text(t: str) -> bool:
     return any(w.lower() not in MATH_WORDS for w in WORD.findall(t))
 
 
+def find_text_spans(s: str, include_bare: bool = False) -> list[tuple[int, int, str, int]]:
+    """Spans to translate: ``(start, end, inner, inner_start)``.
+
+    ``inner_start == start`` marks a *bare* word (wrap it in ``\text{...}``);
+    otherwise the command (e.g. ``\textbf``) is kept and only the inner text replaced.
+    ``include_bare`` also catches plain words in a table that the model did not wrap.
+    """
+    spans: list[tuple[int, int, str, int]] = []
+    for a, z, inner in find_text_groups(s):
+        m = TEXTCMD.match(s, a)
+        spans.append((a, z, inner, m.end() if m else a + 1))
+    if not include_bare:
+        return spans
+    occupied = [(a, z) for a, z, _ in find_text_groups(s)]
+    dollars: list[tuple[int, int]] = []
+    start = None
+    for i, ch in enumerate(s):
+        if ch == "$":
+            if start is None:
+                start = i
+            else:
+                dollars.append((start, i))
+                start = None
+
+    def covered(i: int) -> bool:
+        return any(a <= i < z for a, z in occupied) or any(a < i < b for a, b in dollars)
+
+    for m in BARE_CELL.finditer(s):
+        text = m.group(1).strip()
+        if not text or covered(m.start()):
+            continue
+        if text.lower() in MATH_WORDS or text.lower() in LATEX_KEYWORDS:
+            continue
+        if not is_source_text(text):
+            continue
+        a = m.start() + m.group(1).index(text) if text in m.group(1) else m.start()
+        spans.append((a, a + len(text), text, a))
+    spans.sort()
+    return spans
+
+
 def _translate_batch(provider: Provider, items: list[str], target_lang: str) -> list[str]:
     prompt = (
         f"Translate each string in this JSON array into {target_lang}. They are short "
@@ -121,7 +195,7 @@ def annotate_blocks(provider: Provider, blocks: list[dict], target_lang: str) ->
         t = b.get("type")
         if t in ("math", "table"):
             lx = b.get("latex", "")
-            groups = [g for g in find_text_groups(lx) if is_source_text(g[2])]
+            groups = [g for g in find_text_spans(lx, include_bare=(t == "table")) if is_source_text(g[2])]
             if groups:
                 work.append((b, lx, groups))
         elif t == "figure":
@@ -140,8 +214,13 @@ def annotate_blocks(provider: Provider, blocks: list[dict], target_lang: str) ->
     for b, lx, groups in work:
         replacements = tr[cursor : cursor + len(groups)]
         cursor += len(groups)
-        for (a, z, _), zh in sorted(zip(groups, replacements, strict=False), key=lambda x: -x[0][0]):
-            lx = lx[:a] + "\\text{" + zh + "}" + lx[z:]
+        for (a, z, _inner, istart), zh in sorted(
+            zip(groups, replacements, strict=False), key=lambda x: -x[0][0]
+        ):
+            if istart == a:  # bare word -> wrap it
+                lx = lx[:a] + "\\text{" + zh + "}" + lx[z:]
+            else:  # keep the command (bold headers stay bold)
+                lx = lx[:istart] + zh + lx[z - 1 :]
         b["latex"] = lx
     for b in caps:
         b["caption"] = tr[cursor]

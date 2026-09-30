@@ -309,3 +309,13 @@ def test_page_with_page_number_compiles(tiny_pdf, tmp_path, xelatex_available):
     }
     latex.run_build(cfg, {tiny_pdf.stem: [entry]})
     assert paths.page_pdfs(cfg.workdir, tiny_pdf.stem, 1)  # was: no part compiled
+
+
+def test_figure_captions_render_full_width_below_the_row():
+    from ocrtran import latex, layout
+
+    b = {"type": "figure"}
+    fig = layout.Fig(block=b, bbox=(0, 0, 0.3, 0.2), width=0.3, aspect=0.5, caption="a long caption")
+    tex = latex._figure_row_tex(layout.FigRow([fig], [0.3]), {id(b): ("a.png", 0.3)})
+    # the caption is outside the figure minipage -> not a narrow column
+    assert tex.index("a long caption") > tex.index("\\end{minipage}")

@@ -78,3 +78,41 @@ def test_annotate_translates_figure_caption():
 def test_annotate_skips_empty_caption():
     blocks = [{"type": "figure", "caption": ""}]
     assert annotate_blocks(_CountingProvider(), blocks, "Chinese") == 0
+
+
+def test_annotate_translates_textbf_and_bare_table_cells():
+    blocks = [
+        {
+            "type": "table",
+            "latex": (
+                r"\begin{array}{|l|l|} \hline \textbf{Особине} & \textbf{Хлорела} \\ \hline"
+                r" Облик тела & сталан \\ \hline \end{array}"
+            ),
+        }
+    ]
+    n = annotate_blocks(_CountingProvider(), blocks, "Chinese")
+    out = blocks[0]["latex"]
+    assert n == 1
+    assert r"\textbf{Особине}" in out  # command kept (identity translation)
+    assert r"\text{Облик тела}" in out  # bare cell wrapped + translated
+    assert r"\text{сталан}" in out
+
+
+def test_annotate_table_skips_numbers_and_dot_leaders():
+    blocks = [{"type": "table", "latex": r"\begin{array}{c} 300--500 дана \\ 92 \\ \dots \\ \end{array}"}]
+    annotate_blocks(_CountingProvider(), blocks, "Chinese")
+    out = blocks[0]["latex"]
+    assert "\\dots" in out and "92" in out
+    assert r"\text{300--500 дана}" in out
+
+
+def test_annotate_math_blocks_do_not_translate_bare_variables():
+    blocks = [{"type": "math", "latex": r"x = alpha + beta"}]
+    assert annotate_blocks(_CountingProvider(), blocks, "Chinese") == 0
+
+
+def test_find_text_spans_bare_cells_are_whole_phrases():
+    from ocrtran.annotate import find_text_spans
+
+    spans = find_text_spans(r"a & Облик тела & b \\", include_bare=True)
+    assert "Облик тела" in [t[2] for t in spans]

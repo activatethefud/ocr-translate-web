@@ -46,7 +46,16 @@ Rules:
 - Reproduce every formula exactly: fractions, roots, exponents, subscripts,
   matrices, set notation, vectors. Use standard amsmath.
 - Keep inline math inside $...$ in both "source" and "target".
-- For tables output a complete \\begin{array}...\\end{array}.
+- Tables (important): use "table" for EVERY tabular layout and output a complete
+  \\begin{array}{...}...\\end{array} with the same number of columns and rows as the
+  original. Reproduce the structure faithfully: header rows, merged cells
+  (\\multicolumn), and horizontal rules (\\hline). Keep numbers, units and dot leaders
+  (\\dots) exactly as printed.
+- Translate EVERY text cell of a table (including headers) into __TGT__. Wrap each
+  cell's text in \\text{...} (use \\textbf{...} for bold headers, translated too).
+  Never leave __SRC__ words in a table; never merge or drop cells.
+- Contents / table-of-contents pages: reproduce every entry with its page number and
+  translate the entry text (keep the page numbers).
 - If the original page shows a page number (usually in a header or footer), add exactly
   one `page_number` block with "text" set to the number exactly as printed. Do not
   translate it or convert the digits, and do not also include it as prose. If there is

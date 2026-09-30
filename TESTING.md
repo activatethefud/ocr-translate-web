@@ -181,6 +181,16 @@ contains no `\sqrt`/`\frac`/`\cdot`.
 - The frontend polls while `queued|running|finalizing` so the download link appears by
   itself when assembly finishes.
 
+### 9f. Tables and figure captions
+- `test_annotate.py`: `\textbf{...}` table headers are translated (command preserved,
+  bold kept); **bare** table cells are translated as whole phrases and wrapped in
+  `\text{...}`; numbers and dot leaders are skipped; math blocks do not translate bare
+  variables.
+- `test_latex_structure.py`: figure captions render **full width below the row** (not
+  inside the narrow figure minipage).
+- Live check: a bare/`\textbf` table annotated with the real model compiles and shows
+  translated headers/cells with numbers intact.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique
