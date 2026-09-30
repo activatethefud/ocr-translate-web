@@ -217,7 +217,7 @@ def run_ocr(
                         cfg.source_lang,
                         cfg.target_lang,
                         cfg.max_tokens,
-                        glossary=cfg.glossary,
+                        glossary=list(cfg.glossary or []) + list(cfg.auto_glossary or []),
                         do_not_translate=cfg.do_not_translate,
                         instructions=cfg.llm_instructions,
                         figure_mode=cfg.figure_mode,

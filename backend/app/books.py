@@ -203,6 +203,7 @@ class BookDispatcher:
         try:
             cfg = self._chunk_config(book_config, doc_id, book_id, chunk_id, chunk_range)
             provider = self._make_provider(book_config, self._api_key(book_config), self.settings)
+            calls_before = (getattr(provider, "usage", {}) or {}).get("calls", 0)
             results = ocr.run_ocr(cfg, provider)
             annotate.run_annotate(cfg, provider, results)
             latex.run_build(cfg, results)
@@ -211,7 +212,8 @@ class BookDispatcher:
             cost = pricing.cost_usd(
                 cfg.model, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
             )
-            if self.settings.rolling_glossary:
+            # only mine the glossary from chunks that actually translated new pages
+            if self.settings.rolling_glossary and usage.get("calls", 0) > calls_before:
                 self._update_glossary(book_id, book_config, provider, results)
             self._finish_chunk(chunk_id, cost)
             _emit(
@@ -280,13 +282,13 @@ class BookDispatcher:
         try:
             book = s.get(db.Job, book_id)
             cfg = dict(book.config)
-            glossary = list(cfg.get("glossary") or [])
+            glossary = list(cfg.get("auto_glossary") or [])
             seen = {g.get("source") for g in glossary}
             for pair in pairs:
                 if pair["source"] not in seen:
                     glossary.append(pair)
                     seen.add(pair["source"])
-            cfg["glossary"] = glossary[:400]
+            cfg["auto_glossary"] = glossary[:400]
             book.config = cfg
             s.commit()
         finally:
@@ -329,15 +331,15 @@ class BookDispatcher:
             cost = sum(c.cost_usd for c in chunks)
         finally:
             s.close()
+        if chunks:
+            first, last = min(c.page_from for c in chunks), max(c.page_to for c in chunks)
+        else:
+            first, last = 1, cfg_total_pages(book_config, doc_id, self.settings)
         try:
-            cfg = self._final_config(book_config, doc_id, book_id)
+            cfg = self._final_config(book_config, doc_id, book_id, first, last)
             outputs = assemble_mod.assemble(cfg)
             book_tex = storage.work_dir(self.settings, doc_id, book_id) / "source" / "tex"
-            missing = [
-                p
-                for p in range(1, cfg_total_pages(book_config, doc_id, self.settings) + 1)
-                if not (book_tex / f"p{p:02d}.pdf").exists()
-            ]
+            missing = [p for p in range(first, last + 1) if not (book_tex / f"p{p:02d}.pdf").exists()]
             name = (book_config.get("output_name") or "").strip() or "book"
             for _base, path in outputs.items():
                 dest = storage.copy_artifact(
@@ -383,14 +385,16 @@ class BookDispatcher:
             finally:
                 s.close()
 
-    def _final_config(self, book_config: dict, doc_id: str, book_id: str) -> PipelineConfig:
+    def _final_config(
+        self, book_config: dict, doc_id: str, book_id: str, first: int = 1, last: int | None = None
+    ) -> PipelineConfig:
         data = _engine_filter({k: v for k, v in book_config.items() if v is not None})
         data.update(
             {
                 "sources": [str(storage.source_path(self.settings, doc_id))],
                 "workdir": str(storage.work_dir(self.settings, doc_id, book_id)),
                 "cache_dir": str(storage.doc_dir(self.settings, doc_id) / "cache"),
-                "pages": "all",
+                "pages": "all" if (first <= 1 and last is None) else f"{first}-{last}",
                 "api_key_env": self.settings.api_key_env,
             }
         )
@@ -441,6 +445,8 @@ def _default_provider(book_config: dict, api_key: str | None, settings: Settings
         api_base=book_config.get("api_base") or settings.api_base,
         model=book_config.get("model") or settings.default_model,
         api_key=api_key,
+        timeout=book_config.get("timeout") or 600,
+        reasoning_effort=book_config.get("reasoning_effort", "none"),
     )
 
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import time
+
 import fitz
 import pytest
+from sqlalchemy import select
 
 from app import books, db, storage
 from app.books import BookDispatcher, plan_chunks
@@ -396,5 +399,319 @@ def test_book_failed_chunk_keeps_original(env, xelatex_available):
         assert out.page_count == 3  # p1 orig+tx, p2 original only (kept)
         out.close()
         assert "2" in (job.error or "")
+    finally:
+        s.close()
+
+
+# ==========================================================================
+# Thorough book-machinery tests
+# ==========================================================================
+class _RecExec:
+    """Executor that records submissions instead of running them."""
+
+    def __init__(self):
+        self.submitted: list[tuple[str, tuple]] = []
+
+    def submit(self, fn, *a, **k):
+        self.submitted.append((getattr(fn, "__name__", str(fn)), a))
+
+    def shutdown(self, **k):
+        pass
+
+
+def _chunks(bid: str):
+    s = db.get_session()
+    try:
+        return (
+            s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid).order_by(db.Chunk.idx))
+            .scalars()
+            .all()
+        )
+    finally:
+        s.close()
+
+
+def _new_book(env, n_pages=5, chunk_size=1, *, page_from=1, page_to=None, **cfg) -> str:
+    _make_doc(env, n_pages)
+    s = db.get_session()
+    try:
+        doc = s.get(db.Document, "docbook")
+        book = books.create_book(
+            s,
+            env,
+            doc,
+            {"target_lang": "French", **cfg},
+            chunk_size=chunk_size,
+            page_from=page_from,
+            page_to=page_to,
+        )
+        return book.id
+    finally:
+        s.close()
+
+
+def _run_all(d, bid):
+    for c in _chunks(bid):
+        d._run_chunk(bid, c.id)
+
+
+# -- scheduler -------------------------------------------------------------
+def test_tick_respects_concurrency_cap(env):
+    env.book_chunk_concurrency = 1
+    bid = _new_book(env, n_pages=3, chunk_size=1)
+    d = _dispatcher(env)
+    d._executor = _RecExec()
+    d.tick()
+    assert len(d._executor.submitted) == 1
+    assert [c.state for c in _chunks(bid)] == ["running", "queued", "queued"]
+
+
+def test_tick_no_double_dispatch(env):
+    env.book_chunk_concurrency = 1
+    bid = _new_book(env, n_pages=3, chunk_size=1)
+    s = db.get_session()
+    try:
+        first = s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid)).scalars().first()
+        first.state = "running"
+        s.commit()
+    finally:
+        s.close()
+    d = _dispatcher(env)
+    d._executor = _RecExec()
+    d.tick()
+    assert d._executor.submitted == []
+    assert [c.state for c in _chunks(bid)] == ["running", "queued", "queued"]
+
+
+def test_budget_pause_then_resume(env):
+    env.max_book_usd = 0.001
+    bid = _new_book(env, n_pages=2, chunk_size=1)
+    s = db.get_session()
+    try:
+        c = s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid)).scalars().first()
+        c.cost_usd = 1.0
+        s.commit()
+    finally:
+        s.close()
+    d = _dispatcher(env)
+    d._executor = _RecExec()
+    d.tick()
+    assert db.get_session().get(db.Job, bid).status == "paused"
+
+    env.max_book_usd = 100.0
+    s = db.get_session()
+    try:
+        s.get(db.Job, bid).status = "running"
+        s.commit()
+    finally:
+        s.close()
+    d.tick()
+    assert len(d._executor.submitted) >= 1  # dispatching resumed
+
+
+def test_fail_chunk_retries_until_max(env):
+    bid = _new_book(env, n_pages=1, chunk_size=1)
+    cid = _chunks(bid)[0].id
+    d = _dispatcher(env)
+    d._fail_chunk(cid, "boom")
+    assert _chunks(bid)[0].state == "queued"  # attempts 0 < 3 -> retried
+    s = db.get_session()
+    try:
+        s.get(db.Chunk, cid).attempts = 3  # exhausted
+        s.commit()
+    finally:
+        s.close()
+    d._fail_chunk(cid, "boom again")
+    c = _chunks(bid)[0]
+    assert c.state == "failed"
+    assert "boom again" in (c.error or "")
+
+
+def test_progress_tracks_done_pages(env):
+    bid = _new_book(env, n_pages=4, chunk_size=2)  # 2 chunks x 2 pages
+    s = db.get_session()
+    try:
+        zero = (
+            s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid).order_by(db.Chunk.idx))
+            .scalars()
+            .first()
+        )
+        zero.state = "done"
+        s.commit()
+    finally:
+        s.close()
+    d = _dispatcher(env)
+    d._executor = _RecExec()
+    d.tick()
+    assert abs(db.get_session().get(db.Job, bid).progress - 0.5) < 1e-6
+
+
+def test_start_recovers_orphans_and_finalizes(env):
+    bid = _new_book(env, n_pages=2, chunk_size=1)
+    # orphan a running chunk (as if the server had died mid-chunk)
+    s = db.get_session()
+    try:
+        s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid)).scalars().first().state = "running"
+        s.commit()
+    finally:
+        s.close()
+
+    d = _dispatcher(env)
+    seen: list[str] = []
+    d._run_chunk = lambda b, c: (seen.append(c), d._finish_chunk(c, 0.0))
+    d._finalize = lambda b: seen.append("final:" + b)
+    d.start()
+    try:
+        for _ in range(120):
+            if "final:" + bid in seen:
+                break
+            time.sleep(0.05)
+    finally:
+        d.stop()
+    assert "final:" + bid in seen
+    assert all(c.state == "done" for c in _chunks(bid))
+
+
+def test_tick_paused_not_dispatched(env):
+    bid = _new_book(env, n_pages=1, chunk_size=1)
+    s = db.get_session()
+    try:
+        s.get(db.Job, bid).status = "paused"
+        s.commit()
+    finally:
+        s.close()
+    d = _dispatcher(env)
+    d._executor = _RecExec()
+    d.tick()
+    assert d._executor.submitted == []
+    assert _chunks(bid)[0].state == "queued"
+
+
+# -- rolling glossary ------------------------------------------------------
+class _GlossaryTextProvider:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def text(self, prompt, max_tokens=None):
+        return self.payload
+
+    def vision(self, *a, **k):
+        return "{}"
+
+
+def _results(src="a", tgt="b"):
+    return {"d": [{"page": 1, "blocks": [{"type": "prose", "source": src, "target": tgt}]}]}
+
+
+def test_glossary_accumulates_and_dedupes(env):
+    bid = _new_book(env, n_pages=2, chunk_size=1)
+    d = _dispatcher(env)
+    d._update_glossary(bid, {}, _GlossaryTextProvider('[{"source":"a","target":"b"}]'), _results())
+    d._update_glossary(
+        bid,
+        {},
+        _GlossaryTextProvider('[{"source":"a","target":"b"},{"source":"c","target":"d"}]'),
+        _results(),
+    )
+    s = db.get_session()
+    try:
+        glossary = s.get(db.Job, bid).config["auto_glossary"]
+    finally:
+        s.close()
+    assert [g["source"] for g in glossary] == ["a", "c"]  # deduped, order kept
+
+
+def test_glossary_empty_is_noop(env):
+    bid = _new_book(env, n_pages=1, chunk_size=1)
+    d = _dispatcher(env)
+    d._update_glossary(bid, {}, _GlossaryTextProvider("[]"), _results())
+    s = db.get_session()
+    try:
+        assert not (s.get(db.Job, bid).config or {}).get("auto_glossary")
+    finally:
+        s.close()
+
+
+def test_create_book_translated_only_mode(env):
+    bid = _new_book(env, n_pages=2, chunk_size=2, combine="translated_only")
+    assert db.get_session().get(db.Job, bid).mode == "translated_only"
+
+
+def test_collect_pages_copies_pages_and_figures(env, tmp_path):
+    from ocrtran import paths
+    from ocrtran.config import PipelineConfig
+
+    bid = _new_book(env, n_pages=1, chunk_size=1)
+    cfg = PipelineConfig(sources=["dummy.pdf"], workdir=str(tmp_path / "chunk"))
+    p = paths.page_pdf(cfg.workdir, "source", 1)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"%PDF-1.4")
+    (p.parent / "fig_1_0.png").write_bytes(b"png")
+    _dispatcher(env)._collect_pages(cfg, {}, "docbook", bid, (1, 1))
+    book_tex = storage.work_dir(env, "docbook", bid) / "source" / "tex"
+    assert (book_tex / "p01.pdf").exists()
+    assert (book_tex / "fig_1_0.png").exists()
+
+
+# -- finalize: naming, cost, subset range ----------------------------------
+@pytest.mark.integration
+def test_finalize_names_output_and_sums_cost(env, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    bid = _new_book(
+        env,
+        n_pages=2,
+        chunk_size=1,
+        font_main="Noto Serif",
+        bilingual=True,
+        combine="interleave",
+        output_name="My Great Book",
+    )
+    d = _dispatcher(env)
+    _run_all(d, bid)
+    s = db.get_session()
+    try:
+        for c in s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid)).scalars():
+            c.cost_usd = 0.25
+        s.commit()
+    finally:
+        s.close()
+    d._finalize(bid)
+    s = db.get_session()
+    try:
+        job = s.get(db.Job, bid)
+        assert job.status == "done"
+        assert abs(job.cost_usd - 0.5) < 1e-9  # 2 chunks x 0.25
+        art = s.execute(select(db.Artifact).where(db.Artifact.job_id == bid)).scalars().first()
+        assert art.path.rsplit("/", 1)[-1].startswith("My Great Book")
+    finally:
+        s.close()
+
+
+@pytest.mark.integration
+def test_finalize_subset_range_only(env, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    bid = _new_book(
+        env,
+        n_pages=5,
+        chunk_size=1,
+        page_from=2,
+        page_to=3,
+        font_main="Noto Serif",
+        bilingual=True,
+        combine="interleave",
+    )
+    d = _dispatcher(env)
+    _run_all(d, bid)
+    d._finalize(bid)
+    s = db.get_session()
+    try:
+        job = s.get(db.Job, bid)
+        art = s.execute(select(db.Artifact).where(db.Artifact.job_id == bid)).scalars().first()
+        out = fitz.open(art.path)
+        assert out.page_count == 4  # pages 2 and 3 only: original + translation each
+        out.close()
+        assert not job.error  # pages outside the book range are not "missing"
     finally:
         s.close()

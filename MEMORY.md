@@ -3,6 +3,30 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: thorough book-pipeline testing (+ fixes)
+
+Added ~14 focused tests in `tests/test_books.py` (scheduler concurrency cap, no
+double-dispatch, budget pause+resume, retry-until-max, progress, start() orphan recovery,
+glossary accumulate/dedupe, `_collect_pages`, finalize naming/cost/subset range) plus an
+API test for `translated_only` + `from_page`/`to_page` and an opt-in `test_live_book_small`.
+
+Real bugs fixed while testing:
+1. **Book provider didn't disable reasoning** -> `_default_provider` now passes
+   `reasoning_effort="none"` (+ timeout); dense book pages no longer return empty JSON.
+2. **Subset books merged the whole document** and reported the entire rest as missing ->
+   `_finalize`/`_final_config` now use the chunks' page span.
+3. **Rolling glossary busted the OCR cache**: it was merged into the user glossary (part
+   of the cache key), so every chunk had a new key and re-runs re-OCR'd everything. New
+   `config.auto_glossary` is used in the **prompt only**, not the cache key; the dispatcher
+   also skips the glossary pass on fully-cached chunks.
+
+Live audit (`/tmp/live_book_audit.py`): Book A (6 pages, chunk_size=2) -> 3/3 chunks done,
+12-page merged PDF, 0 empty, English translations + Serbian originals, $0.00333, 18
+auto-glossary terms. Book B (same doc, chunk_size=3) -> **$0.00000**, 12 pages, 0 empty.
+Tests: **302 passed + 2 live**.
+
+---
+
 ## Session: "translated only" as a first-class combine option
 
 `combine` now accepts **`translated_only`** directly (previously only reachable by

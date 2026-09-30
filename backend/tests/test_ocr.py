@@ -172,3 +172,34 @@ def test_cache_is_language_specific(tmp_path, tiny_pdf):
     assert len(prov.calls) == n1  # same language -> served from cache
     run("English")
     assert len(prov.calls) > n1  # different language -> re-OCR (no stale Filipino)
+
+
+def test_auto_glossary_does_not_bust_cache(tmp_path, tiny_pdf):
+    """The rolling (auto) glossary must not change the OCR cache key."""
+    from ocrtran.config import PipelineConfig
+    from ocrtran.ocr import run_ocr
+
+    prov = FakeProvider()
+    cache = tmp_path / "cache"
+    call = {"n": 0}
+
+    def run(**kw):
+        call["n"] += 1
+        cfg = PipelineConfig(
+            sources=[str(tiny_pdf)],
+            workdir=str(tmp_path / f"w{call['n']}"),
+            cache_dir=str(cache),
+            source_lang="Serbian",
+            target_lang="English",
+            figure_mode="off",
+            concurrency=1,
+            **kw,
+        )
+        return run_ocr(cfg, prov)
+
+    run(auto_glossary=[{"source": "a", "target": "b"}])
+    n = len(prov.calls)
+    run(auto_glossary=[{"source": "a", "target": "b"}, {"source": "c", "target": "d"}])
+    assert len(prov.calls) == n  # auto glossary growth -> still a cache hit
+    run(glossary=[{"source": "x", "target": "y"}])
+    assert len(prov.calls) > n  # a *user* glossary edit invalidates

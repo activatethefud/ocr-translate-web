@@ -269,3 +269,24 @@ def test_job_create_accepts_translated_only_combine():
 
     body = JobCreate(combine="translated_only", target_lang="English")
     assert body.combine == "translated_only"
+
+
+def test_book_api_subset_translated_only(client, tiny_pdf):
+    """A book can target a page range and output translation-only."""
+    doc = _upload(client, tiny_pdf).json()
+    r = client.post(
+        f"/api/documents/{doc['id']}/book",
+        json={
+            "target_lang": "French",
+            "combine": "translated_only",
+            "from_page": 2,
+            "to_page": 2,
+            "chunk_size": 1,
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["kind"] == "book"
+    assert body["mode"] == "translated_only"
+    chunks = client.get(f"/api/jobs/{body['id']}/chunks").json()
+    assert [(c["page_from"], c["page_to"]) for c in chunks] == [(2, 2)]

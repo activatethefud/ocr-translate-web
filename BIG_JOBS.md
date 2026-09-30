@@ -190,3 +190,24 @@ boundaries editable before start.
 5. **Rolling glossary** — **on** (`ROLLING_GLOSSARY`, opt-out).
 6. **Missing page** — **keep the original + warning** (job error lists the pages).
 7. Chunk concurrency — `BOOK_CHUNK_CONCURRENCY` (default 2).
+
+## 13. Implementation notes (found by thorough testing)
+
+- **Rolling glossary is not part of the OCR cache key.** Cached blocks hold *translated*
+  text, so the cache signature includes the languages, figure mode and the **user**
+  glossary/instructions — but **not** the auto-accumulated glossary (stored separately in
+  `config.auto_glossary`). Otherwise the key changes every chunk and every re-run re-OCRs
+  everything. Verified live: a second book over the same document (different chunk size)
+  costs **$0.00000**.
+- **Rolling glossary is only mined from chunks that translated new pages.** On a fully
+  cache-served chunk the dispatcher makes **0** model calls (no glossary pass), so
+  resume/re-run is genuinely free.
+- **Finalize respects the book's page span.** A book created with `from_page`/`to_page`
+  merges and reports missing pages only within that range (previously it used every page
+  and warned about the whole rest of the document).
+- **Book provider disables a reasoning model's hidden thinking**
+  (`reasoning_effort="none"`) exactly like the engine, so dense pages return JSON instead
+  of burning the token budget.
+- Chunk retry: `attempts` is bumped on dispatch; a failed chunk is re-queued until
+  `max_attempts` (3), then `failed`; a permanently failed chunk never stalls the book
+  (finalize runs once all chunks are terminal).

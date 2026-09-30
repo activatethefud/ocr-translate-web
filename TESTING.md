@@ -70,8 +70,26 @@ skip themselves when `xelatex` is missing.
 ### 3. Live (opt-in, network + cost)
 - Marked `live`, skipped unless `OCRtran_LIVE=1` and a key is set.
   Run: `OCRtran_LIVE=1 DS_KEY=… PYTHONPATH=.deps:. pytest -m live -v`.
-- One 1-page generated fixture (prose + formulas): asserts a PDF is produced and
-  at least one model call was made (`result.usage["calls"] >= 1`).
+- `test_live_one_page`: one 1-page generated fixture (prose + formulas): asserts a PDF
+  is produced and at least one model call was made (`result.usage["calls"] >= 1`).
+- `test_live_book_small`: a real **6-page book** through `BookDispatcher` with
+  `chunk_size=2`; asserts all chunks `done`, the merged PDF has 12 pages (6 originals +
+  6 translations), cost > 0, and no missing-page error.
+
+### 4. Book pipeline (no network)
+`backend/tests/test_books.py` covers the durable dispatcher in depth:
+- planner ranges (N/`chunk_size`, `from`/`to`); `create_book` rows + modes.
+- scheduler: concurrency cap, **no double-dispatch**, budget pause **+ resume**,
+  progress tracking, paused books not dispatched, `start()` orphan recovery.
+- per-chunk retry until `max_attempts`, then `failed`; failed chunk doesn't stall.
+- rolling glossary accumulation/dedupe/empty; `_collect_pages` copies pages + figures.
+- finalize: output naming, cost aggregation, **subset page range only**, missing-page
+  warning, keep-original fallback.
+- API: create (incl. `translated_only` + `from_page`/`to_page`), chunks, pause/resume,
+  retry.
+
+**Live audit** (`backend/tools/` style): run two books over the same document with
+*different* `chunk_size`; the second must cost **$0.00000** (fully cache-served).
 
 ## Failure injection (must not crash the job)
 

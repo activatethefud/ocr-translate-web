@@ -43,6 +43,9 @@ class PipelineConfig:
     target_lang: str = "English"
     concurrency: int = 4  # pages translated in parallel (1 = sequential)
     glossary: list[dict[str, str]] = field(default_factory=list)
+    # rolling (auto) glossary: used in the prompt but NOT part of the cache key, so
+    # the cache stays stable as terms accumulate across chunks/runs.
+    auto_glossary: list[dict[str, str]] = field(default_factory=list)
     do_not_translate: list[str] = field(default_factory=list)
     llm_instructions: str = ""
     verify_math: bool = False
