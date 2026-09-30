@@ -3,6 +3,28 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: fix squares / missing glyphs in translated pages
+
+Squares were XeLaTeX "Missing character" drops. `Noto Serif` lacks math/geometry
+symbols; `Noto Sans CJK SC` lacks Cyrillic and Latin-ext. Fixes in `ocrtran/latex.py`:
+
+- `SYMBOL_TO_MATH` / `SUBSCRIPTS` / `SUPERSCRIPTS` maps: `→ ∈ ∩ ⊆ ∪ ⇒ ≤ ∧ ∨ ⊥ − ▶ ■ ♦`
+  and `a₀ b⁵` become math (`$\to$`, `\textsubscript{0}`, ...) in **text and math**
+  segments, so the math font draws them.
+- fallback font: `_fallback_font(cfg)` = `fallback_font` or `Noto Serif` when the main
+  font is CJK. `\newfontfamily\glyphfallback{...}` is emitted in the header; letters in
+  Greek/Cyrillic/Latin-ext ranges are wrapped in `{\glyphfallback X}` (text) or
+  `\text{{\glyphfallback X}}` (math — a bare switch does nothing in math mode).
+- threaded `fallback` through `esc_text`/`text_to_tex`/`_block_tex`/`_figure_row_tex`/
+  `measure_items`; theorem `name` and figure captions included.
+- new `fallback_font` config (auto).
+
+Rebuilt all 15 affected jobs from cached OCR (no model calls): **0 missing glyphs** across
+every log (was 163), and artifacts regenerated in place. Tests: `test_symbols.py` (14).
+**383 passed** + 2 live.
+
+---
+
 ## Session: figure-crop compression (right-size + png/jpeg)
 
 Figures were cropped at a fixed `figure_px=1800` long side regardless of how big they

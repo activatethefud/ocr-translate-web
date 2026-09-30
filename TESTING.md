@@ -138,7 +138,19 @@ skip themselves when `xelatex` is missing.
 - `render` returns the written `Path` (or `None` for a degenerate box); crops have no
   alpha channel.
 
-### 9. Multi-document batches (no network)
+### 9. Missing-glyph fixes (symbols + fallback font)
+`backend/tests/test_symbols.py`:
+- Unicode math/geometry symbols (`→ ∈ ∩ ⊆ ∪ ⇒ ≤ ∧ ∨ ⊥ − ▶ ■ ♦`, sub/superscripts
+  `a₀ b⁵`) are mapped to math mode, both in text and inside `$...$`.
+- letters the main font lacks (Cyrillic/Latin-ext/Greek) are wrapped in a fallback
+  font; `_fallback_font` auto-selects `Noto Serif` for a CJK main font.
+- non-Latin inside **math mode** uses `\text{{\glyphfallback X}}` (a plain font switch
+  does nothing in math); CJK stays with the main font.
+- escaping is unchanged (`& % # _ { }`, set braces).
+- integration: a page of `→ ∈ њ č š a₀ × b⁵ ▶ ■` under `Noto Sans CJK SC` compiles with
+  **no** `Missing character` in the log.
+
+### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique
   `NN <name> (<target>)` output names, parent kind/status/total.

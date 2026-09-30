@@ -21,6 +21,7 @@ class JobCreate(BaseModel):
     api_key: str | None = Field(default=None, description="BYOK; not stored")
     api_base: str | None = None
     font_main: str | None = None
+    fallback_font: str | None = None
     linebreak_locale: str | None = None
     bilingual: bool = True
     combine: Combine = "interleave"

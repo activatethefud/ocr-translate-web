@@ -37,7 +37,9 @@ def test_esc_unescapes_set_braces():
     # models emit set differences as \{..\}; render literal braces, not a backslash
     out = esc_text("(R\\{−1\\}, ·)")
     assert "\\textbackslash" not in out
-    assert out == "(R\\{−1\\}, ·)"  # \{ .. \} which TeX draws as { .. }
+    assert "\\{" in out and "\\}" in out  # \{ .. \} which TeX draws as { .. }
+    # the symbols are now typeset in math mode instead of being dropped
+    assert out == "(R\\{$-$1\\}, $\\cdot$)"
 
 
 def test_esc_strips_control_chars():

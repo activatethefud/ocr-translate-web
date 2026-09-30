@@ -23,8 +23,18 @@ from .events import CancelToken, Emitter, Event, emit
 _NONLATIN = re.compile(r"[^\x00-\x7F]+")
 
 
-def textify_math(s: str) -> str:
-    return _NONLATIN.sub(lambda m: "\\text{" + m.group(0) + "}", s or "")
+def textify_math(s: str, fallback: str = "") -> str:
+    """Non-Latin letters inside math -> ``\\text{...}`` (fallback font when needed)."""
+    out: list[str] = []
+    for ch in s or "":
+        if ord(ch) < 128:
+            out.append(ch)
+        elif fallback and _needs_fallback(ch):
+            # inside math mode a font switch needs \text{} to take effect
+            out.append("\\text{{\\" + FALLBACK_CMD + " " + ch + "}}")
+        else:
+            out.append("\\text{" + ch + "}")
+    return "".join(out)
 
 
 _TABLE_HEAD = re.compile(r"\\begin\{(array|tabular)\}\{([^}]*)\}")
@@ -77,29 +87,218 @@ DISPLAY_ENVS = (
 )
 
 
-def esc_text(s: str) -> str:
-    """Escape LaTeX specials **outside** ``$...$`` only."""
+# Unicode symbols the prose fonts lack: render them in math mode (the math font has
+# them) instead of letting XeLaTeX drop them as missing glyphs. Applied to text *and*
+# inside $...$ (where the LaTeX command replaces the bare Unicode character).
+SYMBOL_TO_MATH = {
+    "←": r"\leftarrow",
+    "→": r"\to",
+    "↑": r"\uparrow",
+    "↓": r"\downarrow",
+    "↔": r"\leftrightarrow",
+    "↕": r"\updownarrow",
+    "⇐": r"\Leftarrow",
+    "⇒": r"\Rightarrow",
+    "⇔": r"\Leftrightarrow",
+    "↦": r"\mapsto",
+    "⟶": r"\longrightarrow",
+    "⟵": r"\longleftarrow",
+    "−": "-",
+    "∓": r"\mp",
+    "±": r"\pm",
+    "×": r"\times",
+    "÷": r"\div",
+    "⋅": r"\cdot",
+    "∘": r"\circ",
+    "∗": r"\ast",
+    "√": r"\surd",
+    "∞": r"\infty",
+    "∑": r"\sum",
+    "∏": r"\prod",
+    "∫": r"\int",
+    "∮": r"\oint",
+    "∂": r"\partial",
+    "∇": r"\nabla",
+    "∈": r"\in",
+    "∉": r"\notin",
+    "∋": r"\ni",
+    "∩": r"\cap",
+    "∪": r"\cup",
+    "⊆": r"\subseteq",
+    "⊇": r"\supseteq",
+    "⊂": r"\subset",
+    "⊃": r"\supset",
+    "⊄": r"\not\subset",
+    "⊅": r"\not\supset",
+    "∧": r"\wedge",
+    "∨": r"\vee",
+    "¬": r"\neg",
+    "∀": r"\forall",
+    "∃": r"\exists",
+    "∄": r"\nexists",
+    "∅": r"\emptyset",
+    "≤": r"\le",
+    "≥": r"\ge",
+    "≠": r"\ne",
+    "≈": r"\approx",
+    "≡": r"\equiv",
+    "∼": r"\sim",
+    "≃": r"\simeq",
+    "≅": r"\cong",
+    "∝": r"\propto",
+    "⊥": r"\perp",
+    "∥": r"\parallel",
+    "≪": r"\ll",
+    "≫": r"\gg",
+    "■": r"\blacksquare",
+    "□": r"\square",
+    "▪": r"\blacksquare",
+    "▫": r"\square",
+    "▲": r"\blacktriangle",
+    "△": r"\triangle",
+    "▼": r"\blacktriangledown",
+    "▽": r"\triangledown",
+    "▶": r"\blacktriangleright",
+    "▸": r"\triangleright",
+    "◀": r"\blacktriangleleft",
+    "◂": r"\triangleleft",
+    "◤": r"\blacktriangle",
+    "◥": r"\blacktriangle",
+    "●": r"\bullet",
+    "○": r"\circ",
+    "◆": r"\blacklozenge",
+    "◇": r"\lozenge",
+    "★": r"\bigstar",
+    "☆": r"\star",
+    "♦": r"\blacklozenge",
+    "♣": r"\clubsuit",
+    "♠": r"\spadesuit",
+    "♥": r"\heartsuit",
+    "•": r"\textbullet",
+    "·": r"\cdot",
+    "°": r"^\circ",
+    "′": r"^\prime",
+    "″": r"^{\prime\prime}",
+    "µ": r"\textmu",
+}
+# text (non-math) replacements
+TEXT_REPL = {
+    "–": "--",
+    "—": "---",
+    "…": r"\ldots",
+    "†": r"\dag",
+    "‡": r"\ddag",
+    "§": r"\S",
+    "¶": r"\P",
+    "\u00a0": "~",
+    "\u2009": r"\,",
+    "\u202f": r"\,",
+}
+SUBSCRIPTS = {
+    "₀": "0",
+    "₁": "1",
+    "₂": "2",
+    "₃": "3",
+    "₄": "4",
+    "₅": "5",
+    "₆": "6",
+    "₇": "7",
+    "₈": "8",
+    "₉": "9",
+    "₊": "+",
+    "₋": "-",
+    "ₙ": "n",
+    "ₓ": "x",
+}
+SUPERSCRIPTS = {
+    "⁰": "0",
+    "¹": "1",
+    "²": "2",
+    "³": "3",
+    "⁴": "4",
+    "⁵": "5",
+    "⁶": "6",
+    "⁷": "7",
+    "⁸": "8",
+    "⁹": "9",
+    "⁺": "+",
+    "⁻": "-",
+    "ⁿ": "n",
+}
+# scripts a CJK main font does not cover -> render with the fallback font
+_FALLBACK_RANGES = (
+    (0x0370, 0x03FF),  # Greek
+    (0x0400, 0x052F),  # Cyrillic + supplement
+    (0x1E00, 0x1EFF),  # Latin Extended Additional
+    (0x0100, 0x024F),  # Latin Extended A/B
+)
+FALLBACK_CMD = "glyphfallback"
+
+
+def _needs_fallback(ch: str) -> bool:
+    o = ord(ch)
+    return any(a <= o <= b for a, b in _FALLBACK_RANGES)
+
+
+_ESC = {
+    "&": r"\&",
+    "%": r"\%",
+    "#": r"\#",
+    "_": r"\_",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+    "\\": r"\textbackslash{}",
+}
+
+
+def _map_text(seg: str, fallback: str) -> str:
+    seg = "".join(c for c in seg if ord(c) >= 32 or c in "\t")
+    seg = seg.replace("\\{", "{").replace("\\}", "}")  # un-escape set braces
+    out: list[str] = []
+    for ch in seg:
+        if ch in SYMBOL_TO_MATH:
+            out.append("$" + SYMBOL_TO_MATH[ch] + "$")
+        elif ch in SUBSCRIPTS:
+            out.append(r"\textsubscript{" + SUBSCRIPTS[ch] + "}")
+        elif ch in SUPERSCRIPTS:
+            out.append(r"\textsuperscript{" + SUPERSCRIPTS[ch] + "}")
+        elif ch in TEXT_REPL:
+            out.append(TEXT_REPL[ch])
+        elif fallback and _needs_fallback(ch):
+            out.append("{\\" + FALLBACK_CMD + " " + ch + "}")
+        else:
+            out.append(_ESC.get(ch, ch))
+    return "".join(out)
+
+
+def _map_math(seg: str, fallback: str = "") -> str:
+    out: list[str] = []
+    for ch in seg:
+        if ch in SYMBOL_TO_MATH:
+            out.append(SYMBOL_TO_MATH[ch])
+        elif ch in SUBSCRIPTS:
+            out.append("{}_{" + SUBSCRIPTS[ch] + "}")
+        elif ch in SUPERSCRIPTS:
+            out.append("{}^{" + SUPERSCRIPTS[ch] + "}")
+        else:
+            out.append(ch)
+    return textify_math("".join(out), fallback)
+
+
+def esc_text(s: str, fallback: str = "") -> str:
+    """Escape LaTeX specials outside ``$...$``; map symbols/sub-superscripts.
+
+    ``fallback`` is a font family used for letters the main font lacks (e.g. Cyrillic
+    under a CJK font); empty means no fallback.
+    """
     parts, out = s.split("$"), []
     for i, seg in enumerate(parts):
         if i % 2 == 1:
-            out.append("$" + textify_math(seg) + "$")
+            out.append("$" + _map_math(seg, fallback) + "$")
         else:
-            # drop control chars and un-escape set braces the model writes as \{ \}
-            seg = "".join(c for c in seg if ord(c) >= 32 or c in "\t")
-            seg = seg.replace("\\{", "{").replace("\\}", "}")
-            seg = seg.replace("\\", "\\textbackslash{}")
-            for a, b in [
-                ("&", "\\&"),
-                ("%", "\\%"),
-                ("#", "\\#"),
-                ("_", "\\_"),
-                ("{", "\\{"),
-                ("}", "\\}"),
-                ("~", "\\textasciitilde{}"),
-                ("^", "\\textasciicircum{}"),
-            ]:
-                seg = seg.replace(a, b)
-            out.append(seg)
+            out.append(_map_text(seg, fallback))
     return "".join(out)
 
 
@@ -122,6 +321,13 @@ def wrap_math(lx: str) -> str:
     return "\\[\n" + s + "\n\\]"
 
 
+def _fallback_font(cfg: PipelineConfig) -> str:
+    """Font used for letters the main font lacks (Cyrillic/Latin-ext under CJK)."""
+    if cfg.fallback_font:
+        return cfg.fallback_font
+    return "Noto Serif" if "CJK" in cfg.font_main.upper() else ""
+
+
 def _doc_header(cfg: PipelineConfig) -> str:
     lb = ""
     if cfg.linebreak_locale:
@@ -131,7 +337,9 @@ def _doc_header(cfg: PipelineConfig) -> str:
         "\\usepackage{amsmath,amssymb,mathtools}\n"
         "\\usepackage{graphicx}\n\\usepackage{xcolor}\n\\usepackage{cancel}\n"
         "\\usepackage{fontspec}\n"
-        f"\\setmainfont{{{cfg.font_main}}}\n{lb}{cfg.extra_preamble}\n"
+        f"\\setmainfont{{{cfg.font_main}}}\n"
+        + (f"\\newfontfamily\\{FALLBACK_CMD}{{{_fallback_font(cfg)}}}\n" if _fallback_font(cfg) else "")
+        + f"{lb}{cfg.extra_preamble}\n"
         "\\setlength{\\parindent}{0pt}\\setlength{\\parskip}{5pt}\n"
         "\\begin{document}\n"
     )
@@ -156,32 +364,32 @@ def _normalize_math(s: str) -> str:
     return s
 
 
-def text_to_tex(s: str) -> str:
+def text_to_tex(s: str, fallback: str = "") -> str:
     """Escape text and turn blank-line-separated paragraphs into LaTeX paragraphs."""
     s = _normalize_math(s or "")
     paras = [p.strip() for p in re.split(r"\n\s*\n", s.strip()) if p.strip()]
-    return "\n\n".join(esc_text(p.replace("\n", " ")) for p in paras)
+    return "\n\n".join(esc_text(p.replace("\n", " "), fallback) for p in paras)
 
 
 _HEADING_CMDS = {1: "\\subsection*", 2: "\\subsubsection*", 3: "\\paragraph*"}
 
 
-def _block_tex(b: dict, fig_names: dict) -> str | None:
+def _block_tex(b: dict, fig_names: dict, fallback: str = "") -> str | None:
     """Render one structured block to LaTeX (lists/headings/quotes/theorems/…)."""
     t = b.get("type")
     textsrc = b.get("target") or b.get("source") or ""
     if t == "heading":
         cmd = _HEADING_CMDS.get(int(b.get("level") or 2), "\\subsubsection*")
-        return cmd + "{" + text_to_tex(textsrc) + "}"
+        return cmd + "{" + text_to_tex(textsrc, fallback) + "}"
     if t == "prose":
-        return text_to_tex(textsrc)
+        return text_to_tex(textsrc, fallback)
     if t == "quote":
-        return "\\begin{quote}\n" + text_to_tex(textsrc) + "\n\\end{quote}"
+        return "\\begin{quote}\n" + text_to_tex(textsrc, fallback) + "\n\\end{quote}"
     if t == "theorem":
-        kind = esc_text(str(b.get("kind") or "Theorem").strip())
+        kind = esc_text(str(b.get("kind") or "Theorem").strip(), fallback)
         name = str(b.get("name") or "").strip()
-        head = f"\\textbf{{{kind}" + (f" ({esc_text(name)})" if name else "") + ".}"
-        return "\\begin{quote}\n" + head + " " + text_to_tex(textsrc) + "\n\\end{quote}"
+        head = f"\\textbf{{{kind}" + (f" ({esc_text(name, fallback)})" if name else "") + ".}"
+        return "\\begin{quote}\n" + head + " " + text_to_tex(textsrc, fallback) + "\n\\end{quote}"
     if t == "list":
         ordered = bool(b.get("ordered"))
         env = "enumerate" if ordered else "itemize"
@@ -192,7 +400,7 @@ def _block_tex(b: dict, fig_names: dict) -> str | None:
                 # the model often keeps "1)" / "ii." inside the item; strip it so we
                 # don't end up with double numbering
                 txt = _LIST_MARKER.sub("", _normalize_math(txt), count=1)
-            lines.append("  \\item " + text_to_tex(txt))
+            lines.append("  \\item " + text_to_tex(txt, fallback))
         if not lines:
             return None
         return f"\\begin{{{env}}}\n" + "\n".join(lines) + f"\n\\end{{{env}}}"
@@ -200,12 +408,12 @@ def _block_tex(b: dict, fig_names: dict) -> str | None:
         raw = b.get("latex", "")
         if t == "table":
             raw = fix_table_spec(raw)
-        w = wrap_math(textify_math(raw))
+        w = wrap_math(textify_math(raw, fallback))
         if not w:
             return None
         number = str(b.get("number") or "").strip()
         if t == "math" and number and w.endswith("\\]"):
-            w = w[:-2] + " \\qquad \\text{" + esc_text(number) + "} \\]"
+            w = w[:-2] + " \\qquad \\text{" + esc_text(number, fallback) + "} \\]"
         return w
     if t == "page_number":
         return None  # placed as a footer by build_tex, not in the reading flow
@@ -217,13 +425,13 @@ def _block_tex(b: dict, fig_names: dict) -> str | None:
             width = min(0.92, max(0.30, entry[1] * 1.25))
             inner = f"\\includegraphics[width={width:.2f}\\textwidth]{{{name}}}"
             if caption:
-                inner += "\\\\[2pt]\\small " + text_to_tex(caption)
+                inner += "\\\\[2pt]\\small " + text_to_tex(caption, fallback)
             return "\\begin{center}" + inner + "\\end{center}"
         if caption:  # crop failed -> keep the caption so nothing is lost silently
-            return "\\begin{center}\\small \\textit{" + text_to_tex(caption) + "}\\end{center}"
+            return "\\begin{center}\\small \\textit{" + text_to_tex(caption, fallback) + "}\\end{center}"
         return None
     # unknown type: treat like prose (backwards compatible)
-    return text_to_tex(textsrc) if textsrc else None
+    return text_to_tex(textsrc, fallback) if textsrc else None
 
 
 def _assemble_scale(cfg: PipelineConfig, source_pdf: str) -> float:
@@ -298,7 +506,7 @@ def _crop_figures(cfg: PipelineConfig, base: str, source_pdf: str, entry: dict) 
     return fig_names, fig_info
 
 
-def _figure_row_tex(row: layout.FigRow, fig_names: dict) -> str:
+def _figure_row_tex(row: layout.FigRow, fig_names: dict, fallback: str = "") -> str:
     """Render figures side by side (widths were chosen by the layout planner)."""
     parts = []
     for fig, w in zip(row.figs, row.widths, strict=True):
@@ -311,7 +519,7 @@ def _figure_row_tex(row: layout.FigRow, fig_names: dict) -> str:
             # the minipage is already {w}\textwidth wide, so the image fills it
             inner = f"\\includegraphics[width=\\textwidth]{{{name}}}"
         if caption:
-            cap = text_to_tex(caption)
+            cap = text_to_tex(caption, fallback)
             inner = (inner + "\\\\[1pt]\\small " + cap) if inner else ("\\small\\textit{" + cap + "}")
         if not inner:
             continue
@@ -325,11 +533,12 @@ def _figure_row_tex(row: layout.FigRow, fig_names: dict) -> str:
 
 def build_page_tex(cfg: PipelineConfig, items: list, fig_names: dict) -> str:
     """One planned output page -> a standalone LaTeX document."""
+    fallback = _fallback_font(cfg)
     body: list[str] = []
     numbers: list[str] = []
     for it in items:
         if it.kind == "figrow":
-            tex = _figure_row_tex(it.row, fig_names)
+            tex = _figure_row_tex(it.row, fig_names, fallback)
             if tex:
                 body.append(tex)
             continue
@@ -339,7 +548,7 @@ def build_page_tex(cfg: PipelineConfig, items: list, fig_names: dict) -> str:
             if num:
                 numbers.append(num)
             continue
-        rendered = _block_tex(b, fig_names)
+        rendered = _block_tex(b, fig_names, fallback)
         if rendered:
             body.append(rendered)
     footer = ""
@@ -381,6 +590,7 @@ def measure_items(cfg: PipelineConfig, base: str, page: int, items: list, fig_na
     """
     tdir = paths.tex_dir(cfg.workdir, base)
     tdir.mkdir(parents=True, exist_ok=True)
+    fallback = _fallback_font(cfg)
     lines = [
         _doc_header(cfg),
         "\\newbox\\mb",
@@ -389,7 +599,11 @@ def measure_items(cfg: PipelineConfig, base: str, page: int, items: list, fig_na
         + "}\\typeout{TEXTW \\the\\textwidth}\\end{minipage}}",
     ]
     for i, it in enumerate(items):
-        tex = _figure_row_tex(it.row, fig_names) if it.kind == "figrow" else _block_tex(it.block, fig_names)
+        tex = (
+            _figure_row_tex(it.row, fig_names, fallback)
+            if it.kind == "figrow"
+            else _block_tex(it.block, fig_names, fallback)
+        )
         if not tex:
             lines.append(f"\\typeout{{ITEMH {i} 0pt}}")
             continue

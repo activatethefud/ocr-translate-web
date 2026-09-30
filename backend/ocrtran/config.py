@@ -50,6 +50,7 @@ class PipelineConfig:
     llm_instructions: str = ""
     verify_math: bool = False
     font_main: str = "Noto Serif"
+    fallback_font: str = ""  # for letters the main font lacks (auto: Noto Serif for CJK)
     linebreak_locale: str = ""
     extra_preamble: str = ""
     text_width: str = "16.5cm"
