@@ -91,7 +91,17 @@ skip themselves when `xelatex` is missing.
 **Live audit** (`backend/tools/` style): run two books over the same document with
 *different* `chunk_size`; the second must cost **$0.00000** (fully cache-served).
 
-### 5. Multi-document batches (no network)
+### 5. Parallel pages (concurrency 1..8)
+- `parallel_map` tests: order preserved, actual parallelism ≤ the worker cap, never
+  parallel with `workers=1`, exceptions propagate, zero workers falls back.
+- `run_ocr` at `concurrency=8` keeps the page order and one result per page.
+- **Live**: a 12-page document at `concurrency=1` vs `8` -> identical structure
+  (12 pages, 0 empty, correct per-page order) and **~4.6× faster** (21s -> 4.6s).
+- **Live**: a book (`chunk_size=6`, page `concurrency=8`, chunk concurrency 2) and a
+  batch of 2 docs at `concurrency=8` + `figure_mode=judge` -> all pages present, 0
+  empty, figures cropped, batch still sequential.
+
+### 6. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique
   `NN <name> (<target>)` output names, parent kind/status/total.

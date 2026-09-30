@@ -209,3 +209,23 @@ def test_prompt_requests_page_numbers():
     p = build_ocr_prompt("Serbian", "English")
     assert '"page_number"' in p
     assert "page number" in p.lower()
+
+
+def test_run_ocr_parallel_8_preserves_page_order(tmp_path, tiny_pdf):
+    from ocrtran.config import PipelineConfig
+    from ocrtran.ocr import run_ocr
+
+    prov = FakeProvider()
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)],
+        workdir=str(tmp_path / "w"),
+        cache_dir=str(tmp_path / "c"),
+        source_lang="Serbian",
+        target_lang="English",
+        figure_mode="off",
+        concurrency=8,
+    )
+    res = run_ocr(cfg, prov)
+    entries = res[tiny_pdf.stem]
+    assert [e["page"] for e in entries] == [1, 2]  # ordered despite parallel workers
+    assert all(e["blocks"] for e in entries)

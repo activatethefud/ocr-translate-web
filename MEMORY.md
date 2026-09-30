@@ -3,6 +3,23 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: testing parallel page processing up to 8
+
+Added tests + live audits for the "Parallel pages" (concurrency) setting, 1..8:
+- unit: `parallel_map` stays in order, is actually parallel and never exceeds the cap,
+  is serial at workers=1, propagates exceptions; `run_ocr` at concurrency=8 keeps page
+  order and one result per page.
+- live engine: 12-page doc, concurrency=1 -> 21.1s, concurrency=8 -> 4.6s
+  (**4.56×**), both 12 pages / 0 empty / correct per-page order / 12 English pages.
+- live book: `chunk_size=6`, page concurrency=8, book_chunk_concurrency=2 -> 2 chunks done,
+  12 pages, 0 empty, 6.1s, no error.
+- live batch: 2 docs at concurrency=8 + figure_mode=judge -> sequential (max 1 doc),
+  each 3 pages / 0 empty / 1 figure cropped, $0.00416.
+
+Tests: **319 passed + 2 live**. No code changes needed (behavior was already correct).
+
+---
+
 ## Session: preserve page numbers on translated pages
 
 The vision prompt (schema v2 -> `prompt_version="3"`) now instructs the model: if the
