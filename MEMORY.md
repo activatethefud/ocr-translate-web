@@ -3,6 +3,20 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: multiple files + book mode (verify no UI crash)
+
+Checked the multi-file picker combined with book mode. Two fixes so the batch view is
+useful and can't crash:
+- `batch.tick` now sets `done_pages` (sum of child `done_pages`) and progress from pages,
+  so the batch page counter moves during the run (was `0/N` until finalize).
+- `batch._finalize` **surfaces every child artifact at the batch level** (DB rows pointing
+  at the same files) so a batch of books shows all output download links.
+- test: `test_batch_of_books_api_flow` (upload 2 -> batch book -> done, 2 artifacts, dict
+  reports, `done_pages == total_pages`). Live smoke via the running app: 2 books done in
+  ~16 s, 4/4 pages, 2 download links. 443 passed + 2 live.
+
+---
+
 ## Session: queue documents from the file picker
 
 Replaced the "queue multiple documents" checkbox + doc checklist with a **`multiple`

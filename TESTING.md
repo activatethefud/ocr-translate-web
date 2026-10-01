@@ -221,6 +221,14 @@ contains no `\sqrt`/`\frac`/`\cdot`.
   from before the ellipsis fix** (13/14 build now), **p4** is a cover image (guard keeps
   the original) and **p176** was the `fix_table_spec` mangling bug.
 
+### 9j. Multiple files + book mode (UI path)
+- `test_api.py::test_batch_of_books_api_flow`: upload 2 docs -> `POST /api/batch {book:true}`
+  -> batch completes; children are `kind="book"` `done`; batch `done_pages == total_pages`;
+  the batch surfaces **2 artifacts** with working download links; every `/report` returns a
+  dict (the shape the UI reads).
+- Live smoke through the running app: 2 books, `chunk_size=1` -> done in ~16 s, `4/4`
+  pages, 2 download links, child reports `{missing_pages,cost_usd,chunks}`.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

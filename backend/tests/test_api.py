@@ -385,3 +385,42 @@ def test_batch_api_single_children_still_default(client, tiny_pdf):
     r = client.post("/api/batch", json={"target_lang": "French", "document_ids": [d1["id"]]})
     kids = client.get(f"/api/jobs/{r.json()['id']}/children").json()
     assert [k["kind"] for k in kids] == ["single"]
+
+
+@pytest.mark.integration
+def test_batch_of_books_api_flow(client, tiny_pdf, xelatex_available):
+    """Multiple files + book mode: batch completes and the shapes the UI reads are sane."""
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    d1 = _upload(client, tiny_pdf).json()
+    d2 = _upload(client, tiny_pdf).json()
+    r = client.post(
+        "/api/batch",
+        json={
+            "target_lang": "French",
+            "font_main": "Noto Serif",
+            "bilingual": True,
+            "combine": "interleave",
+            "document_ids": [d1["id"], d2["id"]],
+            "book": True,
+            "chunk_size": 1,
+        },
+    )
+    assert r.status_code == 200, r.text
+    jid = r.json()["id"]
+
+    job = _wait(client, jid, timeout=300)
+    assert job["status"] == "done", job
+    kids = client.get(f"/api/jobs/{jid}/children").json()
+    assert [k["kind"] for k in kids] == ["book", "book"]
+    assert all(k["status"] == "done" for k in kids)
+    for k in kids:
+        assert isinstance(k["done_pages"], int) and isinstance(k["total_pages"], int)
+        assert client.get(f"/api/jobs/{k['id']}/report").json()  # book summary dict
+    # the batch level surfaces the child outputs (download links) and page progress
+    assert job["done_pages"] == job["total_pages"] and job["total_pages"] > 0
+    assert len(job["artifacts"]) == 2
+    for a in job["artifacts"]:
+        assert client.get(a["download_url"]).status_code == 200
+    # the report endpoint must return a dict (never crash the UI)
+    assert isinstance(client.get(f"/api/jobs/{jid}/report").json(), dict)

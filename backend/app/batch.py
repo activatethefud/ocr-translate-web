@@ -210,8 +210,10 @@ class BatchDispatcher:
                     continue
                 done = sum(1 for c in children if self._terminal(c))
                 running = next((c for c in children if c.status in ("running", "finalizing")), None)
+                pages = sum(c.done_pages or 0 for c in children)
                 if running is not None:
-                    batch.progress = min(0.99, (done + running.progress) / len(children))
+                    batch.done_pages = min(batch.total_pages, pages)
+                    batch.progress = min(0.99, pages / max(1, batch.total_pages))
                     s.commit()
                     continue
                 if done >= len(children):
@@ -228,7 +230,8 @@ class BatchDispatcher:
                         s.commit()
                         self._executor.submit(self._run_child, batch.id, nxt.id)
                         done += 1
-                batch.progress = min(0.99, done / len(children))
+                batch.done_pages = min(batch.total_pages, pages)
+                batch.progress = min(0.99, pages / max(1, batch.total_pages))
                 s.commit()
         finally:
             s.close()
@@ -302,6 +305,12 @@ class BatchDispatcher:
                 batch.error = "failed documents: " + ", ".join(names)
             else:
                 batch.error = None
+            # surface every child output at the batch level (download links)
+            for a in s.execute(select(db.Artifact).where(db.Artifact.job_id == batch_id)).scalars().all():
+                s.delete(a)
+            for c in children:
+                for a in s.execute(select(db.Artifact).where(db.Artifact.job_id == c.id)).scalars():
+                    s.add(db.Artifact(job_id=batch_id, kind=a.kind, path=a.path, bytes=a.bytes))
             s.commit()
         finally:
             s.close()
