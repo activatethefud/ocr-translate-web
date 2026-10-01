@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 COMBINE_MODES = ("interleave", "grouped", "side_by_side")
+SUBJECTS = ("auto", "math", "physics", "chemistry", "biology", "general")
 OUTPUT_MODES = COMBINE_MODES + ("translated_only",)
 
 
@@ -50,6 +51,7 @@ class PipelineConfig:
     llm_instructions: str = ""
     verify_math: bool = False
     error_guard: str = "auto"  # off | auto: LLM decides what to do with a failed page
+    subject: str = "auto"  # auto | math | physics | chemistry | biology | general
     font_main: str = "Noto Serif"
     fallback_font: str = ""  # for letters the main font lacks (auto: Noto Serif for CJK)
     linebreak_locale: str = ""
@@ -153,6 +155,8 @@ class PipelineConfig:
             raise ConfigError("figure_format must be auto, png or jpeg")
         if not (1 <= self.jpeg_quality <= 100):
             raise ConfigError("jpeg_quality must be between 1 and 100")
+        if self.subject not in SUBJECTS:
+            raise ConfigError(f"subject must be one of {SUBJECTS}")
         if self.error_guard not in ("off", "auto"):
             raise ConfigError("error_guard must be 'off' or 'auto'")
         if self.figure_mode not in ("off", "tight", "judge"):

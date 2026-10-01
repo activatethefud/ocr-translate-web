@@ -348,7 +348,9 @@ MATH_COMMANDS = frozenset(
     sim simeq cong propto ll gg subset subseteq supset supseteq in notin ni cup cap
     setminus emptyset varnothing forall exists nexists neg land lor wedge vee
     to gets mapsto rightarrow leftarrow leftrightarrow Rightarrow Leftarrow Leftrightarrow
-    uparrow downarrow updownarrow longrightarrow longleftarrow
+    uparrow downarrow updownarrow longrightarrow longleftarrow longleftrightarrow
+    Longleftrightarrow rightleftharpoons leftharpoons xrightarrow xleftarrow
+    overset underset stackrel ce mathrm hbar Omega
     infty partial nabla sum prod int oint iint iiint lim limsup liminf
     sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh log ln exp min max gcd lcm
     alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu
@@ -663,6 +665,8 @@ def _doc_header(cfg: PipelineConfig) -> str:
         "\\usepackage{amsmath,amssymb,mathtools}\n"
         "\\usepackage{graphicx}\n\\usepackage{xcolor}\n\\usepackage{cancel}\n"
         "\\usepackage{fontspec}\n\\usepackage{array}\n\\usepackage{adjustbox}\n"
+        # chemistry (\ce{...}) when the package is available, but don't require it
+        "\\IfFileExists{mhchem.sty}{\\usepackage[version=4]{mhchem}}{}\n"
         f"\\setmainfont{{{cfg.font_main}}}\n"
         + (f"\\newfontfamily\\{FALLBACK_CMD}{{{_fallback_font(cfg)}}}\n" if _fallback_font(cfg) else "")
         + f"{lb}{cfg.extra_preamble}\n"

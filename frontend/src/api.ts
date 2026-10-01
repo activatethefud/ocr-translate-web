@@ -182,6 +182,7 @@ export interface JobCreate {
   llm_instructions?: string;
   verify_math?: boolean;
   error_guard?: "off" | "auto";
+  subject?: "auto" | "math" | "physics" | "chemistry" | "biology" | "general";
   pages?: string;
   unprocessed?: "original" | "skip";
   output_page_size?: "match" | "a4" | "letter";

@@ -255,6 +255,19 @@ contains no `\sqrt`/`\frac`/`\cdot`.
 - low disk: `books.tick`/`batch.tick` pause the job ("paused: low disk space") when
   `free_mb < MIN_FREE_MB` and auto-resume when space returns.
 
+### 9n. Formulas from other sciences
+- `ocr.build_ocr_prompt` gets a multi-science rule + per-subject hints
+  (`subject=chemistry|physics|...`); `subject` is validated in config and exposed in the
+  UI and `JobCreate`.
+- `verify.page_formulas` also collects `\ce{...}`, plain-text chemical equations
+  (`CH3COOH ⇌ CH3COO- + H+`, `2H2 + O2 → 2H2O`) and units (`9.81 m/s^2`, `2 kg`) from
+  prose, so the verifier covers them.
+- `latex`: `\ce`/`\xrightarrow`/`\rightleftharpoons` … wrap as inline math; the preamble
+  loads `mhchem` **only if present** (`\IfFileExists`) so nothing breaks without it.
+- `estimate._MATH_CHARS` counts science symbols (⇌, →, Ω, Δ, Å, …) so those pages are
+  detected as formula pages.
+- integration: physics + chemistry formulas compile with no errors.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

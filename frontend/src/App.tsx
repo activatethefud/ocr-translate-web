@@ -153,6 +153,7 @@ export function App() {
   const [llmInstructions, setLlmInstructions] = useState("");
   const [verifyMath, setVerifyMath] = useState(false);
   const [errorGuard, setErrorGuard] = useState<"off" | "auto">("auto");
+  const [subject, setSubject] = useState<"auto" | "math" | "physics" | "chemistry" | "biology" | "general">("auto");
   const [pagesSpec, setPagesSpec] = useState("all");
   const [unprocessed, setUnprocessed] = useState<"original" | "skip">("skip");
   const [outputPageSize, setOutputPageSize] = useState<"match" | "a4" | "letter">("match");
@@ -317,6 +318,7 @@ export function App() {
       llm_instructions: llmInstructions,
       verify_math: verifyMath,
       error_guard: errorGuard,
+      subject,
       pages: pagesSpec,
       unprocessed,
       output_page_size: outputPageSize,
@@ -516,6 +518,16 @@ export function App() {
           <label className="check">
             <input type="checkbox" checked={verifyMath} onChange={(e) => setVerifyMath(e.target.checked)} />
             verify formulas (+1 model call per page)
+          </label>
+          <label>Subject (helps read domain formulas)
+            <select value={subject} onChange={(e) => setSubject(e.target.value as typeof subject)}>
+              <option value="auto">auto / mixed</option>
+              <option value="math">mathematics</option>
+              <option value="physics">physics</option>
+              <option value="chemistry">chemistry</option>
+              <option value="biology">biology</option>
+              <option value="general">general science</option>
+            </select>
           </label>
           <label>If a page fails
             <select value={errorGuard} onChange={(e) => setErrorGuard(e.target.value as "off" | "auto")}>

@@ -78,6 +78,17 @@ session** (click *Forget* to clear it), or set `DS_KEY` in the environment for
 testing. You can also add a **glossary**, **do-not-translate** terms, and free-form
 **additional LLM instructions** per job.
 
+## Sciences beyond maths
+
+Formula handling is **domain-agnostic**: the prompt transcribes equations from *any*
+science in maths-mode LaTeX (subscripts/superscripts, arrows, charges, states, units,
+vectors), and a **Subject** selector (`auto`/`math`/`physics`/`chemistry`/`biology`/
+`general`) adds a targeted hint. Chemistry, e.g., comes out as
+`$2\mathrm{H_2} + \mathrm{O_2} \to 2\mathrm{H_2O}$` rather than a mangled string. The
+**formula verifier** checks them too: it collects display/inline maths *plus* plain-text
+chemical equations and physical units from prose (`CH3COOH ⇌ CH3COO- + H+`, `9.81 m/s^2`)
+and re-checks them against the page image.
+
 ## Output options
 
 - `bilingual` — keep the original pages (or not).

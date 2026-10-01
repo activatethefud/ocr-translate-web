@@ -50,6 +50,7 @@ class JobCreate(BaseModel):
     llm_instructions: str = ""
     verify_math: bool = False
     error_guard: Literal["off", "auto"] = "auto"
+    subject: Literal["auto", "math", "physics", "chemistry", "biology", "general"] = "auto"
     # page control
     pages: str = "all"
     unprocessed: Literal["original", "skip"] = "skip"

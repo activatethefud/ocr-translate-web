@@ -62,7 +62,10 @@ def is_cjk(target_lang: str) -> bool:
     return any(k in low for k in CJK_FACTORS)
 
 
-_MATH_CHARS = re.compile(r"[=≤≥≠≈∑∏∫√∞±×÷∘→⇒∈∀∃⊂⊆∪∩πθαβγδλμσ]")
+_MATH_CHARS = re.compile(
+    r"[=≤≥≠≈∝∑∏∫√∞±∓×÷∘⋅→←↔⇒⇔∈∀∃⊂⊆∪∩∪πθαβγδλμσωΩΔ∂∇"
+    r"⇌⇄℃Åℏµ°]"
+)
 _DRAWING_HINT = 25  # a page with this many vector ops is probably a figure
 # A scan has no text layer, so formulas can't be detected from the PDF. Assume a
 # substantial fraction carry formulas, otherwise the formula check + in-math

@@ -147,3 +147,10 @@ def test_error_guard_validation():
     assert PipelineConfig(sources=["a.pdf"], error_guard="off").error_guard == "off"
     with pytest.raises(ConfigError):
         PipelineConfig(sources=["a.pdf"], error_guard="nope").validate()
+
+
+def test_subject_validation():
+    assert PipelineConfig(sources=["a.pdf"]).subject == "auto"
+    assert PipelineConfig(sources=["a.pdf"], subject="chemistry").subject == "chemistry"
+    with pytest.raises(ConfigError):
+        PipelineConfig(sources=["a.pdf"], subject="astrology").validate()

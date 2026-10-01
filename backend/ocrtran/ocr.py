@@ -42,7 +42,15 @@ Rules:
 - "math": standalone/display equations; set "number" (e.g. "(1)") only if numbered.
 - "theorem": use for theorem/definition/example/proof/lemma/proposition/remark
   environments; set "kind" and, when named, "name" (translate "name" into __TGT__).
-- NEVER translate or alter mathematics; keep every symbol identical.
+- NEVER translate or alter formulas; keep every symbol identical.
+- Formulas come from ANY science (mathematics, physics, chemistry, biology, engineering,
+  geography, ...). Transcribe each one faithfully in standard LaTeX **math mode**:
+  subscripts `_`, superscripts `^`, arrows (`\\to`, `\\rightarrow`, `\\rightleftharpoons`,
+  `\\xrightarrow{...}`), charges as `^{2-}`/`^{+}`, states as `\\text{(aq)}`/`\\text{(s)}`,
+  reaction conditions above the arrow (`\\xrightarrow[\\text{cat.}]{\\Delta}`), units as
+  `\\,\\mathrm{m/s}` (attach the unit to its value), vectors as `\\vec{F}`.
+  Do NOT use the `\\ce{...}` package; plain math LaTeX only.
+- Put every inline formula in `$...$` (e.g. `the speed is $9.81\\,\\mathrm{m/s^2}$`).
 - Reproduce every formula exactly: fractions, roots, exponents, subscripts,
   matrices, set notation, vectors. Use standard amsmath.
 - Keep inline math inside $...$ in both "source" and "target".
@@ -69,10 +77,39 @@ Rules:
 BBOX_PROMPT = figures.BBOX_PROMPT  # kept for backwards compatibility
 
 
+SUBJECT_HINTS = {
+    "math": "Subject: MATHEMATICS. Focus on equations, inequalities, sets, functions.",
+    "physics": (
+        "Subject: PHYSICS. Keep every symbol, unit and constant with its value "
+        "(e.g. $g = 9.81\\,\\mathrm{m/s^2}$); use \\vec for vectors and \\Delta for changes."
+    ),
+    "chemistry": (
+        "Subject: CHEMISTRY. Typeset reaction equations, molecular formulas, ions and "
+        "isotopes in math mode: $2\\mathrm{H_2} + \\mathrm{O_2} \\to 2\\mathrm{H_2O}$, "
+        "$\\mathrm{SO_4^{2-}}$, $\\mathrm{CH_3COOH} \\rightleftharpoons "
+        "\\mathrm{CH_3COO^-} + \\mathrm{H^+}$; put states as \\text{{(aq)}} and catalysts "
+        "above the arrow with \\xrightarrow."
+    ),
+    "biology": (
+        "Subject: BIOLOGY. Keep gene/protein names, sequences, chemical notation and "
+        "pedigree/genetic symbols exactly (e.g. $\\mathrm{{Aa \\times Aa}}$)."
+    ),
+    "general": "Subject: general science. Keep all formulas and units exact.",
+}
+
+
 def build_ocr_prompt(
-    source_lang: str, target_lang: str, glossary=None, do_not_translate=None, instructions=None
+    source_lang: str,
+    target_lang: str,
+    glossary=None,
+    do_not_translate=None,
+    instructions=None,
+    subject: str = "auto",
 ) -> str:
     prompt = OCR_PROMPT.replace("__SRC__", source_lang).replace("__TGT__", target_lang)
+    hint = SUBJECT_HINTS.get(subject or "auto")
+    if hint:
+        prompt += "\n" + hint + "\n"
     if glossary:
         lines = [f"- {g.get('source', '')} => {g.get('target', '')}" for g in glossary if g.get("source")]
         if lines:
@@ -102,13 +139,14 @@ def ocr_image(
     do_not_translate=None,
     instructions=None,
     figure_mode: str = "tight",
+    subject: str = "auto",
 ) -> dict:
     """One page -> ``{"blocks": [...], "tight": [bbox, ...]}``.
 
     ``figure_mode`` controls the extra calls: ``off`` (none), ``tight`` (a dedicated
     bbox pass) or ``judge`` (tight boxes reviewed/expanded by the model).
     """
-    prompt = build_ocr_prompt(source_lang, target_lang, glossary, do_not_translate, instructions)
+    prompt = build_ocr_prompt(source_lang, target_lang, glossary, do_not_translate, instructions, subject)
     obj = parse_json(provider.vision(image_path, prompt, max_tokens))
     if obj is None or not obj.get("blocks"):  # retry on invalid/empty responses
         obj2 = parse_json(provider.vision(image_path, prompt, max_tokens))
@@ -242,6 +280,7 @@ def run_ocr(
                             do_not_translate=cfg.do_not_translate,
                             instructions=cfg.llm_instructions,
                             figure_mode=cfg.figure_mode,
+                            subject=cfg.subject,
                         )
                     cache.save_json(cpath, result)
                 figures.sanitize_result(result, img)

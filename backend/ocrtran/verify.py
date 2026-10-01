@@ -19,9 +19,10 @@ from .providers import Provider
 WORD_RE = re.compile(r"[A-Za-z\u00C0-\u024F\u0400-\u04FF]{4,}")
 
 MATH_CHECK_PROMPT = """You are verifying OCR of one page image.
-Below is the list of math blocks extracted from this page. Compare them against the
-image and report ONLY real discrepancies (a wrong formula, a missing/extra symbol,
-a changed exponent or sign). Ignore translation, wording and formatting.
+Below is the list of formulas and chemical/physical expressions extracted from this page
+(math, physics, chemistry or biology). Compare them against the image and report ONLY
+real discrepancies (a wrong formula or equation, a missing/extra symbol, a changed
+exponent, sign, subscript, charge or unit). Ignore translation, wording and formatting.
 Return strict JSON: {{"ok": true|false, "issues": [{{"block": <index>, "problem": "..."}}]}}
 
 Extracted math blocks (index: LaTeX):
@@ -30,6 +31,24 @@ Extracted math blocks (index: LaTeX):
 
 
 _INLINE_MATH = re.compile(r"\$([^$]+)\$")
+# chemistry/plain-text formulas that never made it into math mode
+_CE = re.compile(r"\\ce\{[^{}]*\}")
+_TOK = r"\d*(?:[A-Z][a-z]?\d*)+(?:[+-])?(?:\([a-z]+\))?"
+_CHEM_EQ = re.compile(
+    _TOK + r"(?:\s*\+\s*" + _TOK + r")*\s*[\u2192\u21cc\u21c4]\s*" + _TOK + r"(?:\s*\+\s*" + _TOK + r")*"
+)
+_UNIT = re.compile(
+    r"\d+(?:[.,]\d+)?\s*(?:kg|mg|mol|mmol|m/s\^?2?|km/h|N|J|W|Pa|kPa|Hz|kHz|MHz|V|A|\u03a9|"
+    r"\u00b0C|K|L|mL|cm|mm|nm|\u00b5m)\b"
+)
+
+
+def _text_formulas(text: str) -> list[str]:
+    out = _INLINE_MATH.findall(text)
+    out += _CE.findall(text)
+    out += [m.group(0).strip() for m in _CHEM_EQ.finditer(text)]
+    out += _UNIT.findall(text)
+    return [f for f in out if f.strip()]
 
 
 def page_formulas(blocks: list[dict]) -> list[str]:
@@ -41,10 +60,10 @@ def page_formulas(blocks: list[dict]) -> list[str]:
             if b.get("latex"):
                 out.append(b["latex"])
         elif t in ("prose", "heading", "quote", "theorem"):
-            out += _INLINE_MATH.findall(b.get("target") or b.get("source") or "")
+            out += _text_formulas(b.get("target") or b.get("source") or "")
         elif t == "list":
             for it in b.get("items") or []:
-                out += _INLINE_MATH.findall(it.get("target") or it.get("source") or "")
+                out += _text_formulas(it.get("target") or it.get("source") or "")
     return out
 
 

@@ -257,3 +257,55 @@ def test_wide_table_fits_the_text_width(tiny_pdf, tmp_path, xelatex_available):
     with fitz.open(pdfs[0]) as d:
         # standalone width = text_width (469pt) + 2x8pt border; must not overflow
         assert d[0].rect.width <= 469 + 2 * 8 + 2
+
+
+def test_prompt_mentions_other_sciences_and_subject_hints():
+    from ocrtran.ocr import build_ocr_prompt
+
+    base = build_ocr_prompt("Serbian", "English")
+    assert "ANY science" in base and "\\to" in base
+    chem = build_ocr_prompt("Serbian", "English", subject="chemistry")
+    assert "CHEMISTRY" in chem and "rightleftharpoons" in chem
+    assert "PHYSICS" in build_ocr_prompt("Serbian", "English", subject="physics")
+
+
+def test_inline_chemistry_command_is_wrapped_in_math():
+    assert esc("the ion \\ce{SO4^2-} is charged") == "the ion $\\ce{SO4^2-}$ is charged"
+
+
+def test_preamble_loads_mhchem_only_if_present():
+    from ocrtran.config import PipelineConfig
+    from ocrtran.latex import preamble
+
+    tex = preamble(PipelineConfig(sources=["a.pdf"]))
+    assert "\\IfFileExists{mhchem.sty}" in tex  # optional, never fatal
+
+
+@pytest.mark.integration
+def test_science_formulas_compile(tiny_pdf, tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)],
+        workdir=str(tmp_path / "w"),
+        layout_mode="single",
+        output_page_size="a4",
+        target_lang="English",
+    )
+    entry = {
+        "page": 1,
+        "tight": [],
+        "blocks": [
+            {"type": "math", "latex": r"F = m \vec{a}, \quad E_k = \tfrac{1}{2}mv^2"},
+            {"type": "math", "latex": r"2\mathrm{H_2} + \mathrm{O_2} \to 2\mathrm{H_2O}"},
+            {
+                "type": "math",
+                "latex": r"\mathrm{CH_3COOH} \rightleftharpoons \mathrm{CH_3COO^-} + \mathrm{H^+}",
+            },
+            {"type": "prose", "target": r"Speed is $9.81\,\mathrm{m/s^2}$ and $T = 300\,\mathrm{K}$."},
+        ],
+    }
+    latex.run_build(cfg, {tiny_pdf.stem: [entry]})
+    assert paths.page_pdfs(cfg.workdir, tiny_pdf.stem, 1)
+    log = (paths.tex_dir(cfg.workdir, tiny_pdf.stem) / "p01.log").read_text(errors="ignore")
+    assert "Error" not in log

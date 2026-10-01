@@ -3,6 +3,27 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: formulas from other sciences (physics, chemistry, biology)
+
+Made the pipeline domain-agnostic:
+- **Prompt**: a general rule transcribes equations from ANY science in maths-mode LaTeX
+  (subscripts, arrows, charges, `\text{(aq)}` states, `\xrightarrow` conditions, units,
+  `\vec`), plus a `subject` hint (`auto|math|physics|chemistry|biology|general`) in
+  `ocr.SUBJECT_HINTS`. `subject` threaded config -> JobCreate -> ocr_image -> prompt, UI.
+  Chemistry is expressed in plain math LaTeX (`2\mathrm{H_2}+\mathrm{O_2}\to2\mathrm{H_2O}`)
+  to avoid requiring `mhchem` (not installed here / not in CI).
+- **LaTeX**: `\ce`/`\xrightarrow`/`\rightleftharpoons`/`\longleftrightarrow` … added to
+  MATH_COMMANDS so inline commands wrap in `$...$`; preamble conditionally loads `mhchem`
+  (`\IfFileExists{mhchem.sty}{...}{}`) so `\ce{}` works if available and never breaks.
+- **verify**: `page_formulas` also pulls `\ce{...}`, plain-text chemical equations
+  (`_CHEM_EQ` element-token regex) and units (`_UNIT`) out of prose; prompt now says
+  "formulas and chemical/physical expressions".
+- **estimate**: `_MATH_CHARS` includes science symbols (⇌ → Ω Δ Å ℏ µ °) so those pages
+  count as formula pages.
+Tests: +6. **466 passed** + 2 live.
+
+---
+
 ## Session: verify_math was broken by the render deletion
 
 `verify_math_page` uses `entry["img"]`, but the disk-lifecycle change deletes every page

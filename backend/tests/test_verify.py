@@ -293,3 +293,20 @@ def test_run_math_check_re_renders_deleted_page_image(tmp_path, tiny_pdf):
     assert entry["math_check"]["checked"] >= 1
     assert not any("No such file" in str(i.get("problem", "")) for i in entry["math_check"]["issues"])
     assert not Path(entry["img"]).exists()  # re-render cleaned up again
+
+
+def test_page_formulas_covers_other_sciences():
+    from ocrtran.verify import page_formulas
+
+    blocks = [
+        {"type": "prose", "target": "The reaction $2H_2 + O_2 \\to 2H_2O$ releases energy."},
+        {"type": "prose", "target": "CH3COOH ⇌ CH3COO- + H+ and 2H2 + O2 → 2H2O"},
+        {"type": "prose", "target": "It falls at 9.81 m/s^2 with mass 2 kg."},
+        {"type": "math", "latex": r"\ce{SO4^2-}"},
+    ]
+    out = page_formulas(blocks)
+    assert r"2H_2 + O_2 \to 2H_2O" in out  # inline math
+    assert "CH3COOH ⇌ CH3COO- + H+" in out  # plain-text chem equation
+    assert "2H2 + O2 → 2H2O" in out
+    assert "9.81 m/s^2" in out and "2 kg" in out  # units
+    assert r"\ce{SO4^2-}" in out
