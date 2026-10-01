@@ -19,6 +19,7 @@ jobs:
   backend:
     name: backend (lint + tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -28,9 +29,13 @@ jobs:
           cache: pip
 
       - name: System deps (TeX Live + fonts + poppler)
+        timeout-minutes: 25
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update
+          sudo apt-get $APT install -y --no-install-recommends \
             poppler-utils \
             texlive-xetex texlive-latex-base texlive-latex-recommended \
             texlive-latex-extra texlive-fonts-recommended \
@@ -75,9 +80,13 @@ jobs:
         with:
           python-version: "3.12"
       - name: System deps
+        timeout-minutes: 25
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update
+          sudo apt-get $APT install -y --no-install-recommends \
             poppler-utils texlive-xetex texlive-latex-base texlive-latex-recommended \
             texlive-latex-extra texlive-fonts-recommended fonts-noto-core
       - run: pip install -e "./backend[dev,server]"
