@@ -121,13 +121,20 @@ export interface MathCheck {
   checked: number;
 }
 
-export interface Report {
-  [base: string]: {
-    output: string;
-    issues: { kind: string; page?: number; error?: string }[];
-    math: MathCheck[];
-  };
+export interface PageReport {
+  output: string;
+  issues: { kind: string; page?: number; error?: string }[];
+  math: MathCheck[];
 }
+
+export interface BookReport {
+  missing_pages?: number[];
+  cost_usd?: number;
+  chunks?: number;
+}
+
+// A single job reports per-source-page; a book reports a summary.
+export type Report = Record<string, PageReport> | BookReport;
 
 export interface Chunk {
   id: string;

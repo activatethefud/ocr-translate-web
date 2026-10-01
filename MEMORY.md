@@ -3,6 +3,26 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: frontend crash when a book completed
+
+The SPA went blank the moment a book finished. Cause: a **book's `report.json` is a
+summary** `{missing_pages, cost_usd, chunks}` while a single job's is
+`{base: {output, issues, math}}`. The verification block did
+`Object.values(report).flatMap(r => r.math).filter(m => !m.ok)` -> for the book,
+`r.math` is `undefined` -> `undefined.ok` -> TypeError -> React unmounts/blank.
+
+Fixes:
+- `Report` is now `Record<string, PageReport> | BookReport`; `mathWarn` iterates
+  defensively (`Array.isArray(r.math)`), and a book report renders a summary line
+  (missing pages / chunks / cost) instead of the formula-check message.
+- added a React **ErrorBoundary** around `<App/>` so any future render error shows a
+  message + "Try again" rather than a blank page.
+- test: `_finalize` report keys pinned to `{missing_pages, cost_usd, chunks}`.
+
+**433 passed** + 2 live.
+
+---
+
 ## Session: LLM error guard + LaTeX robustness (realne funkcije -> Chinese)
 
 **Error guard (new `ocrtran/guard.py`)**: a page that fails to typeset used to be emitted

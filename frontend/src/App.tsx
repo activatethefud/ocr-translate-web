@@ -9,6 +9,8 @@ import {
   type JobOut,
   type ModelInfo,
   type Page,
+  type PageReport,
+  type BookReport,
   type Report,
   type Usage,
 } from "./api";
@@ -336,8 +338,17 @@ export function App() {
     try { await api.rebuild(job.id, page); } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
 
-  const mathWarn = report
-    ? Object.values(report).flatMap((r) => r.math).filter((m) => !m.ok).length : 0;
+  // a book report is a summary (missing_pages/cost_usd/chunks), not per-page -> guard
+  const mathWarn = useMemo(() => {
+    if (!report) return 0;
+    let n = 0;
+    for (const r of Object.values(report)) {
+      const math = (r as PageReport | undefined)?.math;
+      if (Array.isArray(math)) n += math.filter((m) => m && !m.ok).length;
+    }
+    return n;
+  }, [report]);
+  const bookReport = report && "missing_pages" in report ? (report as BookReport) : null;
 
   return (
     <div className="app">
@@ -698,9 +709,17 @@ export function App() {
           {report && (
             <>
               <h2>Verification</h2>
-              {mathWarn > 0
-                ? <div className="error">{mathWarn} page(s) flagged by the formula check</div>
-                : <p className="muted">No structural issues or formula warnings.</p>}
+              {bookReport ? (
+                <p className="muted">
+                  Book report · {(bookReport.missing_pages?.length ?? 0)} missing page(s)
+                  {bookReport.chunks != null && <> · {bookReport.chunks} chunks</>}
+                  {bookReport.cost_usd != null && <> · ${bookReport.cost_usd.toFixed(4)}</>}
+                </p>
+              ) : mathWarn > 0 ? (
+                <div className="error">{mathWarn} page(s) flagged by the formula check</div>
+              ) : (
+                <p className="muted">No structural issues or formula warnings.</p>
+              )}
               <pre className="log">{JSON.stringify(report, null, 1).slice(0, 2000)}</pre>
             </>
           )}

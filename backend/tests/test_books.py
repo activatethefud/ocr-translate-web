@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 import fitz
@@ -222,6 +223,12 @@ def test_book_chunks_and_merge(env, xelatex_available):
         s.close()
 
     d._finalize(bid)
+    # the book writes a *summary* report (not the per-page shape) — the frontend
+    # must not assume per-page "math" here
+    from ocrtran.jsonutil import parse_json as _pj  # noqa: F401
+
+    report = json.loads((storage.artifact_dir(env, bid) / "report.json").read_text())
+    assert set(report) == {"missing_pages", "cost_usd", "chunks"}
     s = db.get_session()
     try:
         job = s.get(db.Job, bid)
@@ -339,8 +346,6 @@ def test_tick_finalizes_when_chunks_terminal(env):
     calls = []
     d._finalize = lambda b: calls.append(b)  # do not actually assemble
     d.tick()
-    import time
-
     for _ in range(60):
         if calls:
             break

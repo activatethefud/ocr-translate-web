@@ -203,6 +203,13 @@ contains no `\sqrt`/`\frac`/`\cdot`.
   double-struck/letterlike (`ℝ ℕ ℤ ℓ …`) are mapped to math.
 - `is_source_text` now detects short words/abbreviations (`и`, `за`, `Сл. 7`).
 
+### 9h. Book report shape / UI robustness
+- `test_books.py`: `_finalize` writes a **summary** report (`missing_pages`, `cost_usd`,
+  `chunks`) — NOT the per-page shape; the API test suite pins it.
+- frontend: `mathWarn`/report rendering handle both shapes (book summary vs per-page
+  `math`), and an `ErrorBoundary` around `<App/>` means a render error shows a message
+  instead of a blank page.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique
