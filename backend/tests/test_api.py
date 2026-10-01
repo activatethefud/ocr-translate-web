@@ -448,3 +448,12 @@ def test_estimate_accepts_book_options(client, tiny_pdf):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["est_cost_usd"] > 0 and body["est_seconds"] > 0 and body["pages"] == 2
+
+
+def test_estimate_reports_missing_source(client, tiny_pdf):
+    from app import storage
+
+    doc = _upload(client, tiny_pdf).json()
+    storage.source_path(client.app.state.settings, doc["id"]).unlink()
+    r = client.get(f"/api/documents/{doc['id']}/estimate?model=deepseek-flash")
+    assert r.status_code == 404  # JSON error, not a 500

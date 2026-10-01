@@ -3,6 +3,19 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: batch-of-books estimate accuracy
+
+Verified the estimate for **multiple files + book mode combined**: the effect estimates
+every queued document with book params (`chunk_size`) and sums them. Live: 3 books ->
+981 pages, **$2.93, 2984 calls, ~8.3 h**. Fixes:
+- book mode estimates the **whole document** (`pages: "all"`), not the page-range spec.
+- `/estimate` now returns **404 (JSON)** when the document source is missing (was a 500
+  whose empty body the UI silently dropped -> underestimated the batch); the UI shows
+  "estimate unavailable for N file(s)" instead of hiding it.
+- test: estimate 404 on missing source. **453 passed** + 2 live.
+
+---
+
 ## Session: book/batch had no predicted time + cost
 
 With the multi-file picker, queued documents set `doc=null`, so the estimate effect

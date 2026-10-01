@@ -436,7 +436,10 @@ def estimate_document(
             raise HTTPException(422, str(exc)) from exc
     finally:
         s.close()
-    sig = estimate.analyze_document(storage.source_path(settings, doc_id))
+    source = storage.source_path(settings, doc_id)
+    if not source.exists():
+        raise HTTPException(404, "document source is missing (re-upload it)")
+    sig = estimate.analyze_document(source)
     model_used = model or settings.default_model
     return EstimateOut(
         **estimate.predict_cost(

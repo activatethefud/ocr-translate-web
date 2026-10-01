@@ -133,6 +133,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [batchEstimate, setBatchEstimate] = useState<Estimate | null>(null);
+  const [estimateMissing, setEstimateMissing] = useState(0);
   const [report, setReport] = useState<Report | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -196,7 +197,7 @@ export function App() {
 
   useEffect(() => {
     const opts = {
-      model, verifyMath, pages: pagesSpec, figureMode, targetLang,
+      model, verifyMath, pages: bookMode ? "all" : pagesSpec, figureMode, targetLang,
       glossaryTerms: parseGlossary(glossaryText).length,
       extraChars: llmInstructions.length + doNotTranslate.length,
       chunkSize: bookMode ? chunkSize : 0,
@@ -208,11 +209,13 @@ export function App() {
       Promise.all(batchDocs.map((id) => api.estimate(id, opts).catch(() => null))).then((list) => {
         if (cancelled) return;
         const ok = list.filter((e): e is Estimate => !!e);
+        setEstimateMissing(list.length - ok.length);
         setBatchEstimate(ok.length ? sumEstimates(ok) : null);
       });
       return () => { cancelled = true; };
     }
     setBatchEstimate(null);
+    setEstimateMissing(0);
     if (!doc) { setEstimate(null); return; }
     api
       .estimate(doc.id, opts)
@@ -626,6 +629,7 @@ export function App() {
               )}{" "}
               · {shownEstimate.est_calls} calls · {shownEstimate.pages} pages
               {shownEstimate.est_seconds ? <> · ~{fmtDuration(shownEstimate.est_seconds)}</> : null}
+              {estimateMissing > 0 && <> · estimate unavailable for {estimateMissing} file(s)</>}
               {Number(shownEstimate.assumptions?.learned_calls ?? 0) > 0 && (
                 <> · tuned from {String(shownEstimate.assumptions?.learned_calls)} past calls</>
               )}
