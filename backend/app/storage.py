@@ -172,3 +172,33 @@ def prune_work(settings, keep_job_ids: set[str] | None = None) -> dict:
                 shutil.rmtree(target, ignore_errors=True)
                 removed += 1
     return {"freed_bytes": freed, "freed_mb": freed // (1024 * 1024), "removed": removed}
+
+
+def prune_old_work(settings, keep_job_ids: set[str] | None = None, ttl_hours: float = 5.0) -> dict:
+    """Delete whole job work dirs whose last activity is older than ``ttl_hours``.
+
+    Work dirs hold only regenerateable intermediates (rendered pages, LaTeX, figure
+    crops, per-chunk copies, built page PDFs) — book ``chunks/`` are the biggest by far.
+    The OCR ``cache`` (tiny) and the output ``artifacts`` are kept, so a re-run is
+    cache-cheap. Active jobs and recent work are never touched.
+    """
+    import shutil
+    import time
+
+    keep = set(keep_job_ids or ())
+    cutoff = time.time() - ttl_hours * 3600.0
+    root = Path(settings.storage_dir) / "docs"
+    freed = 0
+    removed = 0
+    for work in root.glob("*/work/*"):
+        if work.name in keep:
+            continue
+        try:
+            if work.stat().st_mtime >= cutoff:
+                continue
+        except OSError:
+            continue
+        freed += _dir_size(work)
+        shutil.rmtree(work, ignore_errors=True)
+        removed += 1
+    return {"freed_bytes": freed, "freed_mb": freed // (1024 * 1024), "removed": removed}

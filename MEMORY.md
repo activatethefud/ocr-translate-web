@@ -3,6 +3,21 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: disk space during translation + TTL pruning
+
+Measured where translation space goes on a working box: `work/*/chunks` **3.1 GB**,
+`work/*/out|source/tex|source/pages` ~0.9 GB, uploaded `source.pdf` 1.3 GB, output
+`artifacts` 373 MB — and the OCR **cache only 12 MB**. So the hog is regenerateable work
+intermediates (book chunks duplicate each chunk's pages/tex), not the cache.
+
+Added `CACHE_TTL_HOURS` (default 5) and `storage.prune_old_work`: it removes whole job
+work dirs whose last activity is older than the TTL, keeping active jobs, the OCR cache
+and the artifacts (so a re-run stays cache-cheap). Wired into app startup +
+a 30-minute background thread, `POST /api/admin/prune` and `tools/prune.py`.
+Running it once freed **2.4 GB** (6.1 -> 8.5 GB free). Tests: +1. **442 passed** + 2 live.
+
+---
+
 ## Session: tables overflow / mangled specs + missing-page diagnosis
 
 Two table bugs:

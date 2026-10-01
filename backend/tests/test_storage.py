@@ -134,3 +134,33 @@ def test_prune_work_removes_intermediates_but_keeps_review_and_cache(tmp_path):
     assert not (pruned / "source" / "tex").exists()
     assert not (pruned / "chunks").exists()
     assert (pruned / "source" / "ocr.json").exists()  # review data kept
+
+
+def test_prune_old_work_drops_old_dirs_keeps_recent_and_active(tmp_path):
+    import os
+    import time
+
+    from app import storage
+    from app.settings import Settings
+
+    settings = Settings(storage_dir=tmp_path / "store")
+    settings.ensure_dirs()
+
+    def make(job_id: str, age_hours: float):
+        w = storage.work_dir(settings, "doc", job_id)
+        (w / "source" / "pages").mkdir(parents=True, exist_ok=True)
+        (w / "source" / "pages" / "b").write_bytes(b"x" * 1000)
+        (w / "chunks" / "c").mkdir(parents=True, exist_ok=True)
+        (w / "chunks" / "c" / "f").write_bytes(b"x" * 1000)
+        t = time.time() - age_hours * 3600
+        os.utime(w, (t, t))
+        return w
+
+    old = make("old", 10)
+    recent = make("recent", 1)
+    active = make("active", 10)
+    res = storage.prune_old_work(settings, {"active"}, ttl_hours=5)
+    assert res["removed"] == 1
+    assert not old.exists()
+    assert recent.exists()  # newer than the TTL
+    assert active.exists()  # active jobs are never pruned

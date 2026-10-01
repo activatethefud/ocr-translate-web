@@ -25,6 +25,10 @@ def main() -> int:
         s.close()
     before = storage.free_mb(settings.storage_dir)
     res = storage.prune_work(settings, keep)
+    res_old = storage.prune_old_work(settings, keep, settings.cache_ttl_hours)
+    res["removed"] += res_old["removed"]
+    res["freed_mb"] += res_old["freed_mb"]
+    res["freed_bytes"] += res_old["freed_bytes"]
     after = storage.free_mb(settings.storage_dir)
     print(
         f"removed {res['removed']} dirs, ~{res['freed_mb']} MB "

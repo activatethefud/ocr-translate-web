@@ -171,3 +171,17 @@ SSE_IDLE_TIMEOUT=120
 4. **Limiter backend**: in-memory single process, or Redis now for multi-worker?
 5. **Queue behaviour**: reject when full (`503`, simplest) or accept and queue
    (needs a durable queue)?
+
+
+## Disk hygiene (work intermediates)
+
+Translation writes a lot of *regenerateable* intermediates — especially book
+``chunks/`` (each chunk keeps its own rendered pages, LaTeX, figure crops and page
+PDFs). The OCR **cache** is tiny by comparison (single-digit MB) and the output
+**artifacts** are the deliverables.
+
+``CACHE_TTL_HOURS`` (default **5**) controls automatic pruning: `storage.prune_old_work`
+deletes whole job work dirs whose last activity is older than the TTL, keeping active
+jobs, the per-document OCR cache and the output artifacts. It runs **at startup and every
+30 min** in the app, is exposed at ``POST /api/admin/prune`` and via
+``python tools/prune.py``.

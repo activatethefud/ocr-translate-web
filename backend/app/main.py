@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import shutil
+import threading
 from contextlib import asynccontextmanager
 from datetime import UTC
 from pathlib import Path
@@ -68,12 +69,24 @@ async def lifespan(app: FastAPI):
     app.state.batch = batch_mod.BatchDispatcher(settings, runner=app.state.runner)
     app.state.batch.start()
     THROTTLE.set_ceiling(settings.max_concurrent_calls)
+    _run_prune(settings)  # once at startup
+    app.state.prune_stop = threading.Event()
+
+    def _prune_loop() -> None:
+        while not app.state.prune_stop.wait(1800):  # every 30 min
+            try:
+                _run_prune(settings)
+            except Exception:  # noqa: BLE001
+                log.exception("prune failed")
+
+    threading.Thread(target=_prune_loop, name="pruner", daemon=True).start()
     free = storage.free_mb(settings.storage_dir)
     if free < settings.min_free_mb:
         log.warning("low disk: %d MB free (< %d MB)", free, settings.min_free_mb)
     try:
         yield
     finally:
+        getattr(app.state, "prune_stop", threading.Event()).set()
         app.state.batch.stop()
         app.state.dispatcher.stop()
         app.state.runner.shutdown()
@@ -110,6 +123,26 @@ def _dispatcher() -> books.BookDispatcher:
 
 def _batch() -> batch_mod.BatchDispatcher:
     return app.state.batch
+
+
+def _run_prune(settings: Settings) -> dict:
+    """Drop old work intermediates (keeps OCR cache + output artifacts)."""
+    s = db.get_session()
+    try:
+        active = {
+            j.id
+            for j in s.execute(
+                select(db.Job).where(db.Job.status.in_(("running", "queued", "paused", "finalizing")))
+            )
+            .scalars()
+            .all()
+        }
+    finally:
+        s.close()
+    res = storage.prune_old_work(settings, active, settings.cache_ttl_hours)
+    if res["removed"]:
+        log.info("pruned %d old work dirs (~%d MB)", res["removed"], res["freed_mb"])
+    return res
 
 
 def _check_disk(settings: Settings) -> None:
@@ -468,7 +501,9 @@ def admin_prune(x_admin_token: str = Header(default=""), settings: Settings = De
         }
     finally:
         s.close()
-    return storage.prune_work(settings, active)
+    res = storage.prune_work(settings, active)
+    res["old_work"] = storage.prune_old_work(settings, active, settings.cache_ttl_hours)
+    return res
 
 
 @app.get("/api/learning")
