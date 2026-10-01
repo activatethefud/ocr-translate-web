@@ -65,6 +65,7 @@ table.chunks th, table.chunks td { text-align: left; padding: 4px 6px; border-bo
 .block-list.ordered { list-style: decimal; }
 .block-list:not(.ordered) { list-style: disc; }
 
-.doclist { max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 8px;
-  padding: 6px 8px; margin: 4px 0; display: flex; flex-direction: column; gap: 4px; }
-.doclist label.check { font-size: 13px; }
+.doclist { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 8px; margin: 4px 0; }
+.doclist summary { cursor: pointer; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.doclist .row.spread { align-items: center; padding: 2px 0; font-size: 13px; }

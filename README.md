@@ -97,8 +97,9 @@ unselected pages (`unprocessed=skip`), so only those pages appear. Switch to
 
 ## Multiple documents (sequential batches)
 
-Tick **queue multiple documents** and select any number of documents; they are
-processed **one after another** (never in parallel) with one shared config. Each
+Pick **several files at once** in the file chooser; they are queued and processed
+**one after another** (never in parallel) with one shared config. Selecting a single file
+is a normal single job. Each
 document gets its own child job, events, progress and artifact, named `NN <name>
 (<target>).pdf`; the batch page shows a per-document table. Because each document has
 its own cache, re-queuing a document is free where it is unchanged.

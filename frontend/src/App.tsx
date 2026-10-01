@@ -144,8 +144,7 @@ export function App() {
   const [bookMode, setBookMode] = useState(false);
   const [chunkSize, setChunkSize] = useState(25);
   const [chunks, setChunks] = useState<Chunk[]>([]);
-  const [queueMode, setQueueMode] = useState(false);
-  const [batchDocs, setBatchDocs] = useState<string[]>([]);
+  const [batchDocs, setBatchDocs] = useState<string[]>([]);  // queued via the file picker
   const [children, setChildren] = useState<JobOut[]>([]);
   const [sessionHasKey, setSessionHasKey] = useState(false);
   const [sessionHint, setSessionHint] = useState("");
@@ -188,6 +187,7 @@ export function App() {
   }, [doc?.id, model, verifyMath, pagesSpec, figureMode, targetLang, glossaryText, llmInstructions, doNotTranslate]);
 
   const running = job && (job.status === "queued" || job.status === "running");
+  const useBatch = batchDocs.length > 1;
   // "finalizing" is still busy (assembling the merged PDF) -> keep polling so the
   // download link appears on its own
   const jobActive = job && (job.status === "queued" || job.status === "running" || job.status === "finalizing");
@@ -239,23 +239,32 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobActive, job?.id]);
 
-  async function onUpload(file: File) {
+  async function onUpload(files: FileList) {
+    const list = Array.from(files);
+    if (!list.length) return;
     setError(""); setBusy(true);
     try {
-      const d = await api.upload(file);
-      setDoc(d);
-      if (queueMode) setBatchDocs((prev) => (prev.includes(d.id) ? prev : [...prev, d.id]));
+      const uploaded: DocumentOut[] = [];
+      for (const f of list) uploaded.push(await api.upload(f));
       setDocs(await api.listDocuments());
+      if (uploaded.length === 1) {
+        setDoc(uploaded[0]); setBatchDocs([]);
+      } else {
+        // several files -> queue them (processed one after another)
+        setDoc(null); setBatchDocs(uploaded.map((d) => d.id));
+      }
       setJob(null); setPages([]); setEvents([]); setReport(null);
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
 
+  function removeQueued(id: string) {
+    const left = batchDocs.filter((x) => x !== id);
+    setBatchDocs(left);
+    if (left.length === 1) { setDoc(docs.find((d) => d.id === left[0]) ?? null); setBatchDocs([]); }
+  }
+
   async function onStart() {
-    if (queueMode) {
-      if (!batchDocs.length) { setError("Select at least one document to queue"); return; }
-    } else if (!doc) {
-      return;
-    }
+    if (!useBatch && !doc) return;
     if (!targetLang.trim()) { setError("Please choose or type a target language"); return; }
     setError(""); setBusy(true);
     if (apiKey) sessionStorage.setItem("ocr_key", apiKey);
@@ -283,7 +292,7 @@ export function App() {
       figure_format: figureFormat,
     };
     try {
-      const j = queueMode
+      const j = useBatch
         ? await api.createBatch({ ...body, document_ids: batchDocs, book: bookMode, chunk_size: chunkSize })
         : bookMode && doc
           ? await api.createBook(doc.id, { ...body, chunk_size: chunkSize })
@@ -366,33 +375,32 @@ export function App() {
       <div className="cols">
         <section className="card">
           <h2>1 · Document</h2>
-          <input type="file" accept="application/pdf,image/*" disabled={busy}
-                 onChange={(e) => e.target.files && onUpload(e.target.files[0])} />
-          <select value={doc?.id ?? ""} onChange={(e) =>
-            setDoc(docs.find((d) => d.id === e.target.value) ?? null)}>
+          <input type="file" accept="application/pdf,image/*" multiple disabled={busy}
+                 onChange={(e) => e.target.files && onUpload(e.target.files)} />
+          <p className="muted">Pick one file for a single job, or several to queue them
+            (processed one after another).</p>
+          <select value={doc?.id ?? ""} onChange={(e) => {
+            setDoc(docs.find((d) => d.id === e.target.value) ?? null);
+            setBatchDocs([]);
+          }}>
             <option value="">— history —</option>
             {docs.map((d) => <option key={d.id} value={d.id}>{d.filename}</option>)}
           </select>
-          <label className="check">
-            <input type="checkbox" checked={queueMode}
-                   onChange={(e) => setQueueMode(e.target.checked)} />
-            queue multiple documents (processed one after another)
-          </label>
-          {queueMode && (
-            <div className="doclist">
-              {docs.length === 0 && <p className="muted">Upload or pick documents above.</p>}
-              {docs.map((d) => (
-                <label key={d.id} className="check">
-                  <input type="checkbox" checked={batchDocs.includes(d.id)}
-                         onChange={(e) =>
-                           setBatchDocs((prev) =>
-                             e.target.checked ? [...prev, d.id] : prev.filter((x) => x !== d.id))} />
-                  {d.filename} <span className="muted">· {d.n_pages}p</span>
-                </label>
-              ))}
-            </div>
+          {useBatch && (
+            <details className="doclist" open>
+              <summary>{batchDocs.length} documents queued — one after another</summary>
+              {batchDocs.map((id) => {
+                const d = docs.find((x) => x.id === id);
+                return (
+                  <div key={id} className="row spread">
+                    <span>{d?.filename ?? id} <span className="muted">· {d?.n_pages ?? "?"}p</span></span>
+                    <button className="ghost" type="button" onClick={() => removeQueued(id)}>remove</button>
+                  </div>
+                );
+              })}
+            </details>
           )}
-          {doc && (
+          {doc && !useBatch && (
             <p className="muted">
               {doc.n_pages} pages · {Math.round(doc.page_w)}×{Math.round(doc.page_h)} pt · {doc.kind}
             </p>
@@ -598,16 +606,15 @@ export function App() {
             <input type="checkbox" checked={bookMode} onChange={(e) => setBookMode(e.target.checked)} />
             book mode — translate in chunks (durable, resumable)
           </label>
-          {(bookMode || queueMode) && (
+          {(bookMode || useBatch) && (
             <label>Chunk size (pages)
               <input type="number" min={1} max={200} value={chunkSize}
                      onChange={(e) => setChunkSize(Math.max(1, Number(e.target.value) || 1))} />
             </label>
           )}
-          <button disabled={(queueMode ? batchDocs.length === 0 : !doc) || busy || !!running}
-                  onClick={onStart}>
-            {queueMode
-              ? `Start batch (${batchDocs.length} ${bookMode ? "book" : "document"}${batchDocs.length === 1 ? "" : "s"})`
+          <button disabled={(!useBatch && !doc) || busy || !!running} onClick={onStart}>
+            {useBatch
+              ? `Start batch (${batchDocs.length} ${bookMode ? "books" : "documents"})`
               : bookMode ? "Start book job" : "Start job"}
           </button>
         </section>

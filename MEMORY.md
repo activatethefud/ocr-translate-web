@@ -3,6 +3,16 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: queue documents from the file picker
+
+Replaced the "queue multiple documents" checkbox + doc checklist with a **`multiple`
+file input**: picking several files uploads them and queues them (sequential batch);
+picking one is a normal single job. The queued set shows in a collapsible `<details>`
+list with per-file **remove** (removing down to 1 falls back to a single job). Chunk
+size / "Start batch (N …)" appear only when >1 is queued. No backend change.
+
+---
+
 ## Session: disk space during translation + TTL pruning
 
 Measured where translation space goes on a working box: `work/*/chunks` **3.1 GB**,
