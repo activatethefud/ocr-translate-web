@@ -3,6 +3,23 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: book/batch had no predicted time + cost
+
+With the multi-file picker, queued documents set `doc=null`, so the estimate effect
+bailed (`if (!doc) { setEstimate(null); return; }`) — book/batch mode showed **no**
+predicted cost/time. Fixes (frontend):
+- estimate the **whole queued set**: `Promise.all(batchDocs.map(id => api.estimate(...)))`
+  summed via `sumEstimates`, shown as "N files queued · ≈$X · calls · pages · ~time".
+- pass `chunk_size`/`concurrency` to the estimate so **book mode** is accounted for
+  (`chunk_size=0` unless book mode). Verified live: 345 pages, chunk 25, judge ->
+  $1.03, 1049 calls, ~2.9 h.
+- added a **live ETA** to the Progress panel (`eta ~ elapsed*(1-progress)/progress`) and
+  human-readable durations.
+- test: `/estimate` accepts `chunk_size`/`concurrency` and returns `est_seconds`.
+  **452 passed** + 2 live.
+
+---
+
 ## Session: book build errors (math tables) + real LaTeX errors
 
 A running book showed many `chunk_build_error` events. Root causes:

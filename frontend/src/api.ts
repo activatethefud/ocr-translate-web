@@ -89,6 +89,8 @@ export interface EstimateOptions {
   targetLang: string;
   glossaryTerms: number;
   extraChars: number;
+  chunkSize?: number;
+  concurrency?: number;
 }
 
 export interface Usage {
@@ -297,6 +299,8 @@ export const api = {
       target_lang: o.targetLang,
       glossary_terms: String(o.glossaryTerms),
       extra_chars: String(o.extraChars),
+      chunk_size: String(o.chunkSize ?? 0),
+      concurrency: String(o.concurrency ?? 4),
     });
     return fetch(`/api/documents/${docId}/estimate?${q}`, { headers: headers() }).then(j<Estimate>);
   },

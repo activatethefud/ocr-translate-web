@@ -430,3 +430,21 @@ def test_uploading_identical_file_is_deduplicated(client, tiny_pdf):
     d1 = _upload(client, tiny_pdf).json()
     d2 = _upload(client, tiny_pdf).json()
     assert d1["id"] == d2["id"]  # same bytes -> one stored document
+
+
+def test_estimate_accepts_book_options(client, tiny_pdf):
+    doc = _upload(client, tiny_pdf).json()
+    r = client.get(
+        f"/api/documents/{doc['id']}/estimate",
+        params={
+            "model": "deepseek-flash",
+            "pages": "all",
+            "chunk_size": 1,
+            "concurrency": 2,
+            "figure_mode": "judge",
+            "target_lang": "Chinese (Simplified)",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["est_cost_usd"] > 0 and body["est_seconds"] > 0 and body["pages"] == 2

@@ -38,6 +38,29 @@ const LANGUAGE_NAMES = [
 const LANGUAGES = [...LANGUAGE_NAMES].sort((a, b) => a.localeCompare(b));
 const OTHER = "__other__";
 
+function sumEstimates(list: Estimate[]): Estimate {
+  const sum = (f: (e: Estimate) => number) => list.reduce((a, e) => a + f(e), 0);
+  return {
+    ...list[0],
+    pages: sum((e) => e.pages),
+    est_calls: sum((e) => e.est_calls),
+    est_prompt_tokens: sum((e) => e.est_prompt_tokens),
+    est_completion_tokens: sum((e) => e.est_completion_tokens),
+    est_cost_usd: sum((e) => e.est_cost_usd),
+    est_cost_low: sum((e) => e.est_cost_low ?? 0),
+    est_cost_high: sum((e) => e.est_cost_high ?? 0),
+    est_seconds: sum((e) => e.est_seconds ?? 0),
+    breakdown: undefined,
+  };
+}
+
+function fmtDuration(sec: number): string {
+  if (!isFinite(sec) || sec <= 0) return "—";
+  if (sec < 90) return `${Math.round(sec)}s`;
+  if (sec < 5400) return `${Math.round(sec / 60)} min`;
+  return `${(sec / 3600).toFixed(1)} h`;
+}
+
 function parseGlossary(text: string): { source: string; target: string }[] {
   return text
     .split("\n")
@@ -109,6 +132,7 @@ export function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [estimate, setEstimate] = useState<Estimate | null>(null);
+  const [batchEstimate, setBatchEstimate] = useState<Estimate | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -171,26 +195,39 @@ export function App() {
   }, [targetLang]);
 
   useEffect(() => {
+    const opts = {
+      model, verifyMath, pages: pagesSpec, figureMode, targetLang,
+      glossaryTerms: parseGlossary(glossaryText).length,
+      extraChars: llmInstructions.length + doNotTranslate.length,
+      chunkSize: bookMode ? chunkSize : 0,
+      concurrency: pageConcurrency,
+    };
+    // queued documents (multi-file picker): predict the whole batch by summing
+    if (batchDocs.length > 0) {
+      let cancelled = false;
+      Promise.all(batchDocs.map((id) => api.estimate(id, opts).catch(() => null))).then((list) => {
+        if (cancelled) return;
+        const ok = list.filter((e): e is Estimate => !!e);
+        setBatchEstimate(ok.length ? sumEstimates(ok) : null);
+      });
+      return () => { cancelled = true; };
+    }
+    setBatchEstimate(null);
     if (!doc) { setEstimate(null); return; }
     api
-      .estimate(doc.id, {
-        model,
-        verifyMath,
-        pages: pagesSpec,
-        figureMode,
-        targetLang,
-        glossaryTerms: parseGlossary(glossaryText).length,
-        extraChars: llmInstructions.length + doNotTranslate.length,
-      })
+      .estimate(doc.id, opts)
       .then(setEstimate)
       .catch(() => setEstimate(null));
-  }, [doc?.id, model, verifyMath, pagesSpec, figureMode, targetLang, glossaryText, llmInstructions, doNotTranslate]);
+  }, [doc?.id, batchDocs.join(","), model, verifyMath, pagesSpec, figureMode, targetLang,
+      glossaryText, llmInstructions, doNotTranslate, bookMode, chunkSize, pageConcurrency]);
 
   const running = job && (job.status === "queued" || job.status === "running");
   const useBatch = batchDocs.length > 1;
+  const shownEstimate = batchEstimate ?? estimate;
   // "finalizing" is still busy (assembling the merged PDF) -> keep polling so the
   // download link appears on its own
   const jobActive = job && (job.status === "queued" || job.status === "running" || job.status === "finalizing");
+  const etaSec = jobActive && job && job.progress > 0.02 ? elapsed * ((1 - job.progress) / job.progress) : 0;
   const activePage = useMemo(() => pages.find((p) => p.page === active), [pages, active]);
 
   // ticking elapsed timer while a job runs
@@ -580,20 +617,21 @@ export function App() {
                       placeholder="e.g. Use a formal tone. Keep terminology consistent with the glossary."
                       onChange={(e) => setLlmInstructions(e.target.value)} />
           </label>
-          {estimate && (
+          {shownEstimate && (
             <div className="muted">
-              ≈ <b>${estimate.est_cost_usd.toFixed(4)}</b>
-              {estimate.est_cost_low !== undefined && (
-                <> (range ${estimate.est_cost_low.toFixed(3)}–${(estimate.est_cost_high ?? 0).toFixed(3)})</>
+              {batchEstimate && <>{batchDocs.length} files queued · </>}
+              ≈ <b>${shownEstimate.est_cost_usd.toFixed(4)}</b>
+              {shownEstimate.est_cost_low !== undefined && (
+                <> (range ${shownEstimate.est_cost_low.toFixed(3)}–${(shownEstimate.est_cost_high ?? 0).toFixed(3)})</>
               )}{" "}
-              · {estimate.est_calls} calls · {estimate.pages} pages
-              {estimate.est_seconds ? <> · ~{Math.round(estimate.est_seconds / 60)} min</> : null}
-              {Number(estimate.assumptions?.learned_calls ?? 0) > 0 && (
-                <> · tuned from {String(estimate.assumptions?.learned_calls)} past calls</>
+              · {shownEstimate.est_calls} calls · {shownEstimate.pages} pages
+              {shownEstimate.est_seconds ? <> · ~{fmtDuration(shownEstimate.est_seconds)}</> : null}
+              {Number(shownEstimate.assumptions?.learned_calls ?? 0) > 0 && (
+                <> · tuned from {String(shownEstimate.assumptions?.learned_calls)} past calls</>
               )}
-              {estimate.breakdown && (
+              {shownEstimate.breakdown && (
                 <div className="cost-breakdown">
-                  {Object.entries(estimate.breakdown)
+                  {Object.entries(shownEstimate.breakdown)
                     .filter(([, v]) => v > 0)
                     .map(([k, v]) => (
                       <span key={k}>{k.replace(/_/g, " ")} ${v.toFixed(4)}</span>
@@ -640,6 +678,7 @@ export function App() {
                     <b>{stage || "working…"}</b> · {elapsed}s
                     {job.progress > 0 && <> · {Math.round(job.progress * 100)}%</>} · {job.done_pages}/
                     {job.total_pages} pages
+                    {etaSec > 0 && <> · ETA ~{fmtDuration(etaSec)}</>}
                   </>
                 ) : (
                   <>
