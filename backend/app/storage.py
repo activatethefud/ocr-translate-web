@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from pathlib import Path
@@ -21,6 +22,26 @@ def doc_dir(settings: Settings, doc_id: str) -> Path:
 
 def source_path(settings: Settings, doc_id: str) -> Path:
     return doc_dir(settings, doc_id) / "source.pdf"
+
+
+def source_blob(settings: Settings, sha256: str) -> Path:
+    """Content-addressed stored source: one file per unique document content."""
+    return settings.sources_dir / f"{sha256}.pdf"
+
+
+def artifact_blob(settings: Settings, sha256: str) -> Path:
+    return settings.artifacts_dir / "blobs" / f"{sha256}.pdf"
+
+
+def _link_or_copy(src: str | Path, dst: str | Path) -> None:
+    """Hard-link ``src`` to ``dst`` (so identical content is stored once)."""
+    dst = Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.unlink(missing_ok=True)
+    try:
+        os.link(str(src), str(dst))
+    except OSError:
+        shutil.copy2(src, dst)
 
 
 def work_dir(settings: Settings, doc_id: str, job_id: str | None = None) -> Path:
@@ -81,17 +102,26 @@ def inspect_pdf(path: str | Path) -> dict:
 
 
 def finalize_upload(settings: Settings, doc_id: str, tmp_path: Path, filename: str) -> dict:
-    """Sanitize the uploaded temp file into the document dir and inspect it."""
-    dest = source_path(settings, doc_id)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    sanitize_pdf(tmp_path, dest)
+    """Store the sanitized upload once (content-addressed) and link it into the doc.
+
+    The stored bytes live at ``sources/<sha256>.pdf``; every document that uploads the
+    same content gets a **hard link** to that one file, so a re-uploaded book is not
+    stored again. The sha is taken from the raw upload so it is stable across runs.
+    """
+    raw_sha = file_sha256(tmp_path)
+    blob = source_blob(settings, raw_sha)
+    if not blob.exists():
+        sanitize_pdf(tmp_path, blob)  # sanitize straight into the shared blob
     tmp_path.unlink(missing_ok=True)
+    dest = source_path(settings, doc_id)
+    _link_or_copy(blob, dest)
     info = inspect_pdf(dest)
     return {
         "path": dest,
+        "blob": str(blob),
         "filename": Path(filename).name or "upload.pdf",
-        "sha256": file_sha256(dest),
-        "size_bytes": dest.stat().st_size,
+        "sha256": raw_sha,
+        "size_bytes": blob.stat().st_size,
         **info,
     }
 
@@ -123,8 +153,45 @@ def copy_artifact(
     outdir = artifact_dir(settings, job_id)
     outdir.mkdir(parents=True, exist_ok=True)
     dest = outdir / (dest_name or Path(src).name)
-    shutil.copy2(src, dest)
+    # dedupe identical outputs: store the bytes once in artifacts/blobs and hard-link
+    sha = file_sha256(src)
+    blob = artifact_blob(settings, sha)
+    if not blob.exists():
+        blob.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, blob)  # a real copy, so blob nlink counts job links only
+    _link_or_copy(blob, dest)
     return dest
+
+
+def prune_artifacts(settings, keep_job_ids: set[str] | None = None, ttl_hours: float = 24.0) -> dict:
+    """Delete output artifacts of jobs idle longer than ``ttl_hours`` (and free blobs)."""
+    import time
+
+    keep = set(keep_job_ids or ())
+    cutoff = time.time() - ttl_hours * 3600.0
+    freed = 0
+    removed = 0
+    for d in settings.artifacts_dir.glob("*"):
+        if not d.is_dir() or d.name in ("blobs",) or d.name in keep:
+            continue
+        try:
+            if d.stat().st_mtime >= cutoff:
+                continue
+        except OSError:
+            continue
+        freed += _dir_size(d)
+        shutil.rmtree(d, ignore_errors=True)
+        removed += 1
+    blobs = settings.artifacts_dir / "blobs"
+    if blobs.exists():
+        for b in blobs.glob("*"):
+            try:
+                if b.stat().st_nlink <= 1:  # no job hard-links it anymore
+                    freed += b.stat().st_size
+                    b.unlink()
+            except OSError:
+                pass
+    return {"freed_bytes": freed, "freed_mb": freed // (1024 * 1024), "removed": removed}
 
 
 def free_mb(path) -> int:

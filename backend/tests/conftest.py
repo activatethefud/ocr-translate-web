@@ -30,6 +30,18 @@ def _reset_throttle():
 
 
 @pytest.fixture
+def tiny_pdf2(tmp_path):
+    """A second, *different* tiny PDF (so uploads aren't content-deduplicated)."""
+    p = tmp_path / "tiny2.pdf"
+    doc = fitz.open()
+    for i in range(3):
+        doc.new_page(width=200, height=200).insert_text((20, 40), f"other page {i + 1}")
+    doc.save(p)
+    doc.close()
+    return p
+
+
+@pytest.fixture
 def tiny_pdf(tmp_path: Path) -> Path:
     """A small 2-page text PDF."""
     path = tmp_path / "tiny.pdf"

@@ -292,9 +292,9 @@ def test_book_api_subset_translated_only(client, tiny_pdf):
     assert [(c["page_from"], c["page_to"]) for c in chunks] == [(2, 2)]
 
 
-def test_batch_api_creates_children_in_order(client, tiny_pdf):
+def test_batch_api_creates_children_in_order(client, tiny_pdf, tiny_pdf2):
     d1 = _upload(client, tiny_pdf).json()
-    d2 = _upload(client, tiny_pdf).json()
+    d2 = _upload(client, tiny_pdf2).json()
     r = client.post(
         "/api/batch",
         json={"target_lang": "French", "document_ids": [d1["id"], d2["id"]], "pages": "1-1"},
@@ -368,9 +368,9 @@ def test_resume_book_requeues_failed_chunks(client, tiny_pdf):
         s.close()
 
 
-def test_batch_api_book_children(client, tiny_pdf):
+def test_batch_api_book_children(client, tiny_pdf, tiny_pdf2):
     d1 = _upload(client, tiny_pdf).json()
-    d2 = _upload(client, tiny_pdf).json()
+    d2 = _upload(client, tiny_pdf2).json()
     r = client.post(
         "/api/batch",
         json={"target_lang": "French", "document_ids": [d1["id"], d2["id"]], "book": True, "chunk_size": 1},
@@ -388,12 +388,12 @@ def test_batch_api_single_children_still_default(client, tiny_pdf):
 
 
 @pytest.mark.integration
-def test_batch_of_books_api_flow(client, tiny_pdf, xelatex_available):
+def test_batch_of_books_api_flow(client, tiny_pdf, tiny_pdf2, xelatex_available):
     """Multiple files + book mode: batch completes and the shapes the UI reads are sane."""
     if not xelatex_available:
         pytest.skip("xelatex not installed")
     d1 = _upload(client, tiny_pdf).json()
-    d2 = _upload(client, tiny_pdf).json()
+    d2 = _upload(client, tiny_pdf2).json()
     r = client.post(
         "/api/batch",
         json={
@@ -424,3 +424,9 @@ def test_batch_of_books_api_flow(client, tiny_pdf, xelatex_available):
         assert client.get(a["download_url"]).status_code == 200
     # the report endpoint must return a dict (never crash the UI)
     assert isinstance(client.get(f"/api/jobs/{jid}/report").json(), dict)
+
+
+def test_uploading_identical_file_is_deduplicated(client, tiny_pdf):
+    d1 = _upload(client, tiny_pdf).json()
+    d2 = _upload(client, tiny_pdf).json()
+    assert d1["id"] == d2["id"]  # same bytes -> one stored document

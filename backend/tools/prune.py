@@ -26,6 +26,11 @@ def main() -> int:
     before = storage.free_mb(settings.storage_dir)
     res = storage.prune_work(settings, keep)
     res_old = storage.prune_old_work(settings, keep, settings.cache_ttl_hours)
+    if settings.artifact_ttl_hours:
+        art = storage.prune_artifacts(settings, keep, settings.artifact_ttl_hours)
+        res_old["removed"] += art["removed"]
+        res_old["freed_mb"] += art["freed_mb"]
+        res_old["freed_bytes"] += art["freed_bytes"]
     res["removed"] += res_old["removed"]
     res["freed_mb"] += res_old["freed_mb"]
     res["freed_bytes"] += res_old["freed_bytes"]

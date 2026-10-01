@@ -229,6 +229,13 @@ contains no `\sqrt`/`\frac`/`\cdot`.
 - Live smoke through the running app: 2 books, `chunk_size=1` -> done in ~16 s, `4/4`
   pages, 2 download links, child reports `{missing_pages,cost_usd,chunks}`.
 
+### 9k. Storage dedupe (content-addressed)
+- `test_storage.py`: uploading identical content twice stores **one** `sources/<sha>.pdf`
+  and both documents are **hard links** to it (same inode); `copy_artifact` hard-links
+  identical outputs to one `artifacts/blobs/<sha>.pdf`; `prune_artifacts` removes old
+  artifact dirs and frees now-unreferenced blobs.
+- `test_api.py`: uploading the same file twice returns the **same document id**.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

@@ -164,3 +164,81 @@ def test_prune_old_work_drops_old_dirs_keeps_recent_and_active(tmp_path):
     assert not old.exists()
     assert recent.exists()  # newer than the TTL
     assert active.exists()  # active jobs are never pruned
+
+
+def test_finalize_upload_stores_source_once_and_hard_links(tmp_path):
+    import os
+
+    import fitz
+
+    from app import storage
+    from app.settings import Settings
+
+    settings = Settings(storage_dir=tmp_path / "store")
+    settings.ensure_dirs()
+    src = tmp_path / "a.pdf"
+    d = fitz.open()
+    d.new_page(width=200, height=200)
+    d.save(src)
+    d.close()
+    raw = src.read_bytes()
+
+    for did in ("d1", "d2"):
+        dd = storage.doc_dir(settings, did)
+        dd.mkdir(parents=True, exist_ok=True)
+        tmp = dd / "upload.tmp"
+        tmp.write_bytes(raw)
+        storage.finalize_upload(settings, did, tmp, "a.pdf")
+
+    assert len(list(settings.sources_dir.glob("*.pdf"))) == 1  # stored once
+    a = storage.source_path(settings, "d1")
+    b = storage.source_path(settings, "d2")
+    assert os.stat(a).st_ino == os.stat(b).st_ino  # both are hard links to one file
+
+
+def test_copy_artifact_hard_links_identical_outputs(tmp_path):
+    import os
+
+    import fitz
+
+    from app import storage
+    from app.settings import Settings
+
+    settings = Settings(storage_dir=tmp_path / "store")
+    settings.ensure_dirs()
+    src = tmp_path / "o.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(src)
+    d.close()
+
+    a1 = storage.copy_artifact(settings, "j1", src, "kind", "x.pdf")
+    a2 = storage.copy_artifact(settings, "j2", src, "kind", "x.pdf")
+    assert os.stat(a1).st_ino == os.stat(a2).st_ino
+    assert len(list((settings.artifacts_dir / "blobs").glob("*.pdf"))) == 1
+
+
+def test_prune_artifacts_removes_old_and_frees_blobs(tmp_path):
+    import os
+    import time
+
+    import fitz
+
+    from app import storage
+    from app.settings import Settings
+
+    settings = Settings(storage_dir=tmp_path / "store")
+    settings.ensure_dirs()
+    src = tmp_path / "o.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(src)
+    d.close()
+    storage.copy_artifact(settings, "j1", src, "kind", "x.pdf")
+    old = time.time() - 48 * 3600
+    os.utime(settings.artifacts_dir / "j1", (old, old))
+
+    res = storage.prune_artifacts(settings, set(), ttl_hours=24)
+    assert res["removed"] == 1
+    assert not (settings.artifacts_dir / "j1").exists()
+    assert list((settings.artifacts_dir / "blobs").glob("*.pdf")) == []  # blob freed

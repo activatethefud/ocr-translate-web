@@ -140,6 +140,9 @@ def _run_prune(settings: Settings) -> dict:
     finally:
         s.close()
     res = storage.prune_old_work(settings, active, settings.cache_ttl_hours)
+    if settings.artifact_ttl_hours:
+        art = storage.prune_artifacts(settings, active, settings.artifact_ttl_hours)
+        res["artifacts"] = art
     if res["removed"]:
         log.info("pruned %d old work dirs (~%d MB)", res["removed"], res["freed_mb"])
     return res
@@ -356,6 +359,16 @@ async def upload_document(file: UploadFile = File(...), settings: Settings = Dep
 
     s = db.get_session()
     try:
+        # identical content already stored? reuse that document (no second copy)
+        existing = (
+            s.execute(select(db.Document).where(db.Document.sha256 == info["sha256"])).scalars().first()
+        )
+        if existing is not None:
+            blob = storage.source_blob(settings, info["sha256"])
+            if blob.exists():  # make the existing doc share the blob too
+                storage._link_or_copy(blob, storage.source_path(settings, existing.id))
+            shutil.rmtree(ddir, ignore_errors=True)
+            return _doc_out(existing)
         doc = db.Document(
             id=doc_id,
             filename=info["filename"],

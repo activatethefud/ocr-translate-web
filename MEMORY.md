@@ -3,6 +3,29 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: storage redundancies (source/artifact duplication)
+
+Found the mechanisms that duplicate data:
+- `storage.source_path` was `docs/<doc_id>/source.pdf` — **one full copy per upload**, no
+  content dedupe. Re-uploading a book (or the same book under a new row) stored it again.
+- `storage.copy_artifact` copied the whole output per job and artifacts were **never**
+  pruned (only work dirs were).
+
+Fix (content-addressed, DB keeps the reference via `Document.sha256`):
+- uploads are sanitized once into `sources/<raw_sha256>.pdf`; the doc's `source.pdf` is a
+  **hard link** to it. `POST /api/documents` reuses an existing document when the content
+  sha matches (returns the same id, no second copy) and re-links its source to the blob.
+- artifacts are stored at `artifacts/blobs/<sha256>.pdf`; each job's artifact is a hard
+  link, so identical outputs share bytes (blob is a real copy, so its inode link count
+  tracks the jobs — freed when the last job is pruned).
+- `ARTIFACT_TTL_HOURS` (default 0 = keep) + `storage.prune_artifacts` deletes old artifact
+  dirs and frees unreferenced blobs; wired into the prune loop/tool.
+- Batch tests now use two *different* tiny PDFs (a same-file upload is deduped to one doc).
+
+Tests: +4 (storage dedupe/prune, upload dedupe). **447 passed** + 2 live.
+
+---
+
 ## Session: multiple files + book mode (verify no UI crash)
 
 Checked the multi-file picker combined with book mode. Two fixes so the batch view is

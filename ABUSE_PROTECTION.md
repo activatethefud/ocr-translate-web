@@ -180,6 +180,13 @@ Translation writes a lot of *regenerateable* intermediates — especially book
 PDFs). The OCR **cache** is tiny by comparison (single-digit MB) and the output
 **artifacts** are the deliverables.
 
+**Storage is content-addressed** so the same bytes are never stored twice:
+uploaded sources live at ``sources/<sha256>.pdf`` and every document that uploads the
+same content gets a **hard link** to that one file (and re-uploading an identical file
+reuses the existing document row instead of creating a copy); output artifacts are
+stored at ``artifacts/blobs/<sha256>.pdf`` with each job hard-linking its copy.
+``ARTIFACT_TTL_HOURS`` (default **0 = keep**) prunes old output artifacts.
+
 ``CACHE_TTL_HOURS`` (default **5**) controls automatic pruning: `storage.prune_old_work`
 deletes whole job work dirs whose last activity is older than the TTL, keeping active
 jobs, the per-document OCR cache and the output artifacts. It runs **at startup and every
