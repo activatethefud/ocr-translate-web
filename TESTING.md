@@ -210,6 +210,17 @@ contains no `\sqrt`/`\frac`/`\cdot`.
   `math`), and an `ErrorBoundary` around `<App/>` means a render error shows a message
   instead of a blank page.
 
+### 9i. Table fitting + the "missing pages" diagnosis
+- `test_latex_utils.py`: `fix_table_spec` keeps `p{...}` column specs (was mangled to
+  `p{0.45\textwidthcc}` because the regex stopped at the first `}`) and pads correctly;
+  `wrap_table_cells` turns `l/c/r` into `>{\...\arraybackslash}p{...}` and gives
+  `\multicolumn` its full width; table blocks use `\adjustbox{max width=\textwidth}`.
+- `test_symbols.py` (integration): a wide 4-column table compiles and the page does not
+  exceed `text_width + 2*border`.
+- Diagnosis of the latest book: the old "missing pages" were mostly **stale failures
+  from before the ellipsis fix** (13/14 build now), **p4** is a cover image (guard keeps
+  the original) and **p176** was the `fix_table_spec` mangling bug.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

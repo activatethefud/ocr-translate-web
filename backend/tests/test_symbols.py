@@ -229,3 +229,31 @@ def test_unicode_ellipsis_maps_to_math_not_text():
     assert esc("你认为……") == "你认为$\\ldots$$\\ldots$"
     assert esc("$x … y$") == "$x \\ldots y$"
     assert "\\ldots" not in esc("a…b").replace("$\\ldots$", "")  # never bare in text
+
+
+@pytest.mark.integration
+def test_wide_table_fits_the_text_width(tiny_pdf, tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)],
+        workdir=str(tmp_path / "w"),
+        layout_mode="auto",
+        output_page_size="a4",
+        target_lang="French",
+        text_width="16.5cm",
+    )
+    row = " & ".join(f"\\text{{very long cell number {i} that should wrap}}" for i in range(4))
+    entry = {
+        "page": 1,
+        "tight": [],
+        "blocks": [{"type": "table", "latex": f"\\begin{{array}}{{|l|l|l|l|}} {row} \\\\ \\end{{array}}"}],
+    }
+    latex.run_build(cfg, {tiny_pdf.stem: [entry]})
+    pdfs = paths.page_pdfs(cfg.workdir, tiny_pdf.stem, 1)
+    assert pdfs
+    import fitz
+
+    with fitz.open(pdfs[0]) as d:
+        # standalone width = text_width (469pt) + 2x8pt border; must not overflow
+        assert d[0].rect.width <= 469 + 2 * 8 + 2

@@ -3,6 +3,31 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: tables overflow / mangled specs + missing-page diagnosis
+
+Two table bugs:
+1. **`fix_table_spec` mangled `p{...}` specs.** Its head regex was
+   `\\begin{(array|tabular)}{([^}]*)}` which stops at the *first* `}` — inside
+   `p{0.45\\textwidth}` — so the spec became `p{0.45\\textwidth` and padding produced
+   `p{0.45\\textwidthcc}` -> XeLaTeX error (that was book page 176). Rewritten to read the
+   **balanced** `{...}` spec and count columns at brace depth 0 (`l/c/r` + `p/m/b`).
+2. **Tables overflowed the text width** (no wrapping). Now:
+   - `wrap_table_cells` converts `l/c/r` columns to `>{\\raggedright|\\centering|
+     \\raggedleft\\arraybackslash}p{0.9/ncols\\textwidth}` so long cells **wrap**, and
+     rewrites `\\multicolumn{N}{...}` to the full `N`-column width;
+   - table blocks are wrapped in `\\adjustbox{max width=\\textwidth}{$\\displaystyle ...$}`
+     (new `\\usepackage{array,adjustbox}`) so anything still too wide is scaled to fit.
+
+**Missing-page diagnosis** for the latest book (`498bc462`, 14 missing): re-running just
+those pages, **13/14 now build** (the old failures predated the `…`/ellipsis fix), **p4**
+is a full-page cover image (OCR returns no blocks -> guard keeps the **original**), and
+**p176** was the `fix_table_spec` bug above. So it wasn't the LLM failing — it was stale
+runs plus a real table-spec bug.
+
+Tests: +7. **441 passed** + 2 live.
+
+---
+
 ## Session: LLM guard vs "missing pages" (book)
 
 Asked whether the guard could handle a book's 4 missing pages (4/59/87/126). Findings

@@ -97,3 +97,43 @@ def test_fix_text_ellipsis_inside_text_groups():
 
     assert fix_text_ellipsis(r"\text{中国\ldots\ldots}") == r"\text{中国……}"
     assert fix_text_ellipsis(r"x \dots y") == r"x \dots y"  # math context untouched
+
+
+def test_fix_table_spec_keeps_p_column_specs():
+    from ocrtran.latex import fix_table_spec
+
+    tex = r"\begin{array}{|p{0.45\textwidth}|p{0.45\textwidth}|} a & b \\ c & d \\ \end{array}"
+    assert fix_table_spec(tex) == tex  # 2 columns declared, 2 used -> untouched
+
+
+def test_fix_table_spec_pads_p_column_specs():
+    from ocrtran.latex import fix_table_spec
+
+    tex = r"\begin{array}{|p{0.4\textwidth}|p{0.4\textwidth}|} a & b & c \\ \end{array}"
+    out = fix_table_spec(tex)
+    assert out.startswith(r"\begin{array}{|p{0.4\textwidth}|p{0.4\textwidth}|c|}")
+    assert "textwidthc}" not in out  # never mangled
+
+
+def test_table_block_uses_adjustbox():
+    from ocrtran.latex import _block_tex
+
+    tex = _block_tex({"type": "table", "latex": r"\begin{array}{cc} a & b \\ \end{array}"}, {})
+    assert tex.startswith(r"\adjustbox{max width=\textwidth}")
+
+
+def test_wrap_table_cells_converts_columns_to_wrapping_p():
+    from ocrtran.latex import wrap_table_cells
+
+    tex = r"\begin{array}{|l|c|} a & b \\ \end{array}"
+    out = wrap_table_cells(tex)
+    assert r">{\raggedright\arraybackslash}p{0.450\textwidth}" in out
+    assert r">{\centering\arraybackslash}p{0.450\textwidth}" in out
+
+
+def test_wrap_table_cells_multicolumn_gets_full_width():
+    from ocrtran.latex import wrap_table_cells
+
+    tex = r"\begin{array}{|l|l|} \multicolumn{2}{|c|}{Total} \\ a & b \\ \end{array}"
+    out = wrap_table_cells(tex)
+    assert r"\multicolumn{2}{|>{\centering\arraybackslash}p{0.900\textwidth}|}" in out

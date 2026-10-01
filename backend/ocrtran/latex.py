@@ -37,7 +37,7 @@ def textify_math(s: str, fallback: str = "") -> str:
     return "".join(out)
 
 
-_TABLE_HEAD = re.compile(r"\\begin\{(array|tabular)\}\{([^}]*)\}")
+_TABLE_HEAD = re.compile(r"\\begin\{(array|tabular)\}")
 
 
 def fix_table_spec(s: str) -> str:
@@ -50,20 +50,39 @@ def fix_table_spec(s: str) -> str:
     m = _TABLE_HEAD.search(s or "")
     if not m:
         return s
-    spec = m.group(2)
-    body = s[m.end() :]
-    body = body.split("\\end{", 1)[0]
+    i = m.end()
+    if i >= len(s) or s[i] != "{":
+        return s
+    depth, j = 0, i
+    while j < len(s):  # read the *balanced* column spec (it may contain p{...})
+        if s[j] == "{":
+            depth += 1
+        elif s[j] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    if depth != 0:
+        return s
+    spec = s[i + 1 : j]
+    body = s[j + 1 :].split("\\end{", 1)[0]
     max_cols = 0
     for row in re.split(r"\\\\", body):
         max_cols = max(max_cols, row.count("&") + 1)
-    spec_cols = len(re.findall(r"[lcr]", spec)) + len(re.findall(r"p\{[^}]*\}", spec))
+    # count columns at top level: l/c/r letters + p{}/m{}/b{} specifiers
+    spec_cols, d = 0, 0
+    for ch in spec:
+        if ch == "{":
+            d += 1
+        elif ch == "}":
+            d = max(0, d - 1)
+        elif d == 0 and ch in "lcrXpmb":
+            spec_cols += 1
+    _pad_at = m.start() + len(m.group(0)) + 1 + len(spec)  # position of the spec's "}"
     if max_cols > spec_cols:
         add = max_cols - spec_cols
-        if spec.endswith("|"):
-            spec = spec[:-1] + "|c" * add + "|"
-        else:
-            spec = spec + "c" * add
-        s = s[: m.start(2)] + spec + s[m.end(2) :]
+        spec = (spec[:-1] + "|c" * add + "|") if spec.endswith("|") else (spec + "c" * add)
+        s = s[: i + 1] + spec + s[j:]
     return s
 
 
@@ -443,6 +462,73 @@ def strip_tags(lx: str) -> str:
 
 
 _TEXT_GROUP = re.compile(r"\\text\{([^{}]*)\}")
+_COL_WRAP = {"l": r"\raggedright", "c": r"\centering", "r": r"\raggedleft"}
+
+
+def _wrap_spec(spec: str, width: str) -> str:
+    """Turn l/c/r columns into wrapping ``p{...}`` columns (long cells wrap)."""
+    out: list[str] = []
+    i = 0
+    while i < len(spec):
+        ch = spec[i]
+        if ch == "{":  # a group belonging to >{...} @{...} !{...}
+            depth, j = 0, i
+            while j < len(spec):
+                if spec[j] == "{":
+                    depth += 1
+                elif spec[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            out.append(spec[i : j + 1])
+            i = j + 1
+        elif ch in _COL_WRAP:
+            out.append(">{" + _COL_WRAP[ch] + r"\arraybackslash}p{" + width + "}")
+            i += 1
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def wrap_table_cells(s: str) -> str:
+    """Make a table's cells wrap: l/c/r columns -> p{} columns; also multicolumn."""
+    m = _TABLE_HEAD.search(s or "")
+    if not m:
+        return s
+    i = m.end()
+    if i >= len(s) or s[i] != "{":
+        return s
+    depth, j = 0, i
+    while j < len(s):
+        if s[j] == "{":
+            depth += 1
+        elif s[j] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    if depth != 0:
+        return s
+    spec = s[i + 1 : j]
+    ncols, d = 0, 0
+    for ch in spec:
+        if ch == "{":
+            d += 1
+        elif ch == "}":
+            d = max(0, d - 1)
+        elif d == 0 and ch in "lcrXpmb":
+            ncols += 1
+    base = f"{0.90 / max(1, ncols):.3f}\\textwidth"
+    s = s[: i + 1] + _wrap_spec(spec, base) + s[j:]
+
+    def multicol(mm: re.Match) -> str:
+        n = int(mm.group(1))
+        width = f"{0.90 * n / max(1, ncols):.3f}\\textwidth"
+        return "\\multicolumn{" + str(n) + "}{" + _wrap_spec(mm.group(2), width) + "}"
+
+    return re.sub(r"\\multicolumn\{(\d+)\}\{([^{}]*)\}", multicol, s)
 
 
 def fix_text_ellipsis(s: str) -> str:
@@ -492,7 +578,7 @@ def _doc_header(cfg: PipelineConfig) -> str:
         "\\documentclass[border=8pt]{standalone}\n"
         "\\usepackage{amsmath,amssymb,mathtools}\n"
         "\\usepackage{graphicx}\n\\usepackage{xcolor}\n\\usepackage{cancel}\n"
-        "\\usepackage{fontspec}\n"
+        "\\usepackage{fontspec}\n\\usepackage{array}\n\\usepackage{adjustbox}\n"
         f"\\setmainfont{{{cfg.font_main}}}\n"
         + (f"\\newfontfamily\\{FALLBACK_CMD}{{{_fallback_font(cfg)}}}\n" if _fallback_font(cfg) else "")
         + f"{lb}{cfg.extra_preamble}\n"
@@ -570,11 +656,20 @@ def _block_tex(b: dict, fig_names: dict, fallback: str = "") -> str | None:
         raw = strip_tags(b.get("latex", ""))
         if t == "table":
             raw = fix_table_spec(raw)
+        if not raw.strip():
+            return None
+        if t == "table":
+            # tables are often wider than the text width -> scale down to fit
+            return (
+                "\\adjustbox{max width=\\textwidth}{$\\displaystyle "
+                + fix_text_ellipsis(textify_math(wrap_table_cells(raw), fallback))
+                + "$}"
+            )
         w = wrap_math(fix_text_ellipsis(textify_math(raw, fallback)))
         if not w:
             return None
         number = str(b.get("number") or "").strip()
-        if t == "math" and number and w.endswith("\\]"):
+        if number and w.endswith("\\]"):
             w = w[:-2] + " \\qquad \\text{" + esc_text(number, fallback) + "} \\]"
         return w
     if t == "page_number":
