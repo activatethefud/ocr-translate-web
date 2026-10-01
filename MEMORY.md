@@ -3,6 +3,27 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: book build errors (math tables) + real LaTeX errors
+
+A running book showed many `chunk_build_error` events. Root causes:
+1. **`wrap_table_cells` broke math tables.** Converting `l/c/r` to `p{}` puts cells in
+   *text mode*, so `\tau(p)`, `\mathbb{N}`, `\lor` -> "Missing $ inserted" /
+   "\mathbb allowed only in math mode". Now cells are wrapped **only when the table is
+   pure text** (`_table_is_text`: no `$`, commands ⊆ text-safe set); math tables keep
+   `l/c/r` and `\adjustbox{max width=\textwidth}` fits them. `\text{}` is stripped in
+   text tables (it is math-only).
+2. **Invalid column specs** from the model (e.g. `{c|\text{ccccc}}`) -> "Illegal
+   pream-token". Added `_clean_spec` to keep only valid array tokens (`l c r X p m b |
+   @ ! > < *`) and drop the rest, then pad.
+3. **`compile_tex` hid the error.** With `-file-line-error` the real message is
+   `./pNN.tex:60: Package array Error: ...` and does **not** start with `!`, so it fell
+   back to the log tail ("No file pNN.aux" etc.). It now matches `! ` **or** `*.tex:NN:`.
+
+Verified: the 11 previously-failing pages (10,11,13,14,19,26,27,35,41) now build with no
+errors. Tests: +4. **451 passed** + 2 live.
+
+---
+
 ## Session: storage redundancies (source/artifact duplication)
 
 Found the mechanisms that duplicate data:

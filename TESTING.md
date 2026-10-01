@@ -236,6 +236,17 @@ contains no `\sqrt`/`\frac`/`\cdot`.
   artifact dirs and frees now-unreferenced blobs.
 - `test_api.py`: uploading the same file twice returns the **same document id**.
 
+### 9l. Table math/width regressions + real error messages
+- `fix_table_spec` sanitizes the column spec (`_clean_spec`), dropping bogus tokens like
+  the model's `{c|\text{ccccc}}` and padding to the columns actually used.
+- `wrap_table_cells` now wraps **only text tables**: `p{}` columns are text mode, which
+  breaks math (`\tau`, `\mathbb` need math). Math tables keep `l/c/r` and rely on
+  `\adjustbox{max width=\textwidth}` to fit. `\text{}` is stripped in text tables.
+- `compile_tex` surfaces the **real** error: with `-file-line-error` the message is
+  `./pNN.tex:60: Package array Error: ...` (it doesn't start with `!`), so the old
+  extraction returned a useless log tail. Integration test compiles a broken doc and
+  asserts the message points at it.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

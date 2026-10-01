@@ -319,3 +319,16 @@ def test_figure_captions_render_full_width_below_the_row():
     tex = latex._figure_row_tex(layout.FigRow([fig], [0.3]), {id(b): ("a.png", 0.3)})
     # the caption is outside the figure minipage -> not a narrow column
     assert tex.index("a long caption") > tex.index("\\end{minipage}")
+
+
+@pytest.mark.integration
+def test_compile_tex_reports_the_real_error(tmp_path, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    from ocrtran.latex import compile_tex
+
+    tex = tmp_path / "bad.tex"
+    tex.write_text("\\documentclass{standalone}\\begin{document}\\thiscommanddoesnotexist\\end{document}")
+    ok, log = compile_tex(tex, tmp_path)
+    assert not ok
+    assert "bad.tex:" in log or "Undefined control sequence" in log  # not just a log tail

@@ -137,3 +137,26 @@ def test_wrap_table_cells_multicolumn_gets_full_width():
     tex = r"\begin{array}{|l|l|} \multicolumn{2}{|c|}{Total} \\ a & b \\ \end{array}"
     out = wrap_table_cells(tex)
     assert r"\multicolumn{2}{|>{\centering\arraybackslash}p{0.900\textwidth}|}" in out
+
+
+def test_fix_table_spec_drops_invalid_pream_tokens():
+    from ocrtran.latex import fix_table_spec
+
+    # the model emitted a bogus {c|\text{ccccc}} spec -> cleaned + padded to 6 columns
+    out = fix_table_spec(r"\begin{array}{c|\text{ccccc}} a & b & c & d & e & f \\ \end{array}")
+    assert "\\text" not in out
+    assert out.startswith(r"\begin{array}{c|c|c|c|c|c|}")
+
+
+def test_wrap_table_cells_leaves_math_tables_alone():
+    from ocrtran.latex import wrap_table_cells
+
+    tex = r"\begin{array}{|c|c|} \tau(p) & \tau(q) \\ \top & \bot \\ \end{array}"
+    assert wrap_table_cells(tex) == tex  # p{} would break math mode
+
+
+def test_wrap_table_cells_strips_text_in_text_tables():
+    from ocrtran.latex import wrap_table_cells
+
+    out = wrap_table_cells(r"\begin{array}{cc} \text{你好} & \text{世界} \\ \end{array}")
+    assert "p{" in out and "\\text{你好}" not in out and "你好" in out

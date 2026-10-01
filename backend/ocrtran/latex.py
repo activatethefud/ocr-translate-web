@@ -40,6 +40,56 @@ def textify_math(s: str, fallback: str = "") -> str:
 _TABLE_HEAD = re.compile(r"\\begin\{(array|tabular)\}")
 
 
+def _balanced(spec: str, i: int) -> int:
+    """Index just past the ``{...}`` group starting at ``i`` (or ``i`` if none)."""
+    if i >= len(spec) or spec[i] != "{":
+        return i
+    depth, j = 0, i
+    while j < len(spec):
+        if spec[j] == "{":
+            depth += 1
+        elif spec[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    return len(spec)
+
+
+def _clean_spec(spec: str) -> str:
+    """Keep only valid array column tokens; drop garbage (e.g. ``\\text{ccccc}``)."""
+    out: list[str] = []
+    i = 0
+    while i < len(spec):
+        ch = spec[i]
+        if ch in "lcrXpmb|":
+            out.append(ch)
+            i += 1
+        elif ch == "{":  # width/argument of the previous p/m/b
+            j = _balanced(spec, i)
+            out.append(spec[i:j])
+            i = j
+        elif ch in "@!><":
+            j = _balanced(spec, spec.find("{", i) if "{" in spec[i:] else len(spec))
+            if j > i:
+                out.append(spec[i] + spec[spec.find("{", i) : j])
+                i = j
+            else:
+                i += 1
+        elif ch == "*":
+            j = _balanced(spec, spec.find("{", i) if "{" in spec[i:] else len(spec))
+            k = _balanced(spec, j)
+            out.append(spec[i:k])
+            i = k
+        elif ch == "\\":  # unknown command -> drop it and its braces
+            m = re.match(r"\\[A-Za-z]+", spec[i:])
+            i += m.end() if m else 1
+            i = _balanced(spec, i)
+        else:
+            i += 1
+    return "".join(out) or "c"
+
+
 def fix_table_spec(s: str) -> str:
     """Pad an array/tabular column spec so rows with extra ``&`` don't error.
 
@@ -64,7 +114,7 @@ def fix_table_spec(s: str) -> str:
         j += 1
     if depth != 0:
         return s
-    spec = s[i + 1 : j]
+    spec = _clean_spec(s[i + 1 : j])
     body = s[j + 1 :].split("\\end{", 1)[0]
     max_cols = 0
     for row in re.split(r"\\\\", body):
@@ -463,6 +513,36 @@ def strip_tags(lx: str) -> str:
 
 _TEXT_GROUP = re.compile(r"\\text\{([^{}]*)\}")
 _COL_WRAP = {"l": r"\raggedright", "c": r"\centering", "r": r"\raggedleft"}
+# commands that are safe in a text-mode p{} cell
+_TEXT_SAFE_CMDS = {
+    "hline",
+    "cline",
+    "textbf",
+    "textit",
+    "textrm",
+    "textsf",
+    "texttt",
+    "emph",
+    "multicolumn",
+    "multirow",
+    "dots",
+    "ldots",
+    "cdots",
+    "vdots",
+    "ddots",
+    "quad",
+    "qquad",
+    "arraystretch",
+    "text",
+}
+
+
+def _table_is_text(body: str) -> bool:
+    """True when every cell is plain text (no math) so p{} wrapping is safe."""
+    if "$" in body:
+        return False
+    cmds = set(re.findall(r"\\([A-Za-z]+)", body))
+    return cmds <= _TEXT_SAFE_CMDS
 
 
 def _wrap_spec(spec: str, width: str) -> str:
@@ -493,7 +573,7 @@ def _wrap_spec(spec: str, width: str) -> str:
 
 
 def wrap_table_cells(s: str) -> str:
-    """Make a table's cells wrap: l/c/r columns -> p{} columns; also multicolumn."""
+    """Make a *text* table's cells wrap (l/c/r -> p{}); math tables are left alone."""
     m = _TABLE_HEAD.search(s or "")
     if not m:
         return s
@@ -511,6 +591,10 @@ def wrap_table_cells(s: str) -> str:
         j += 1
     if depth != 0:
         return s
+    body0 = s[j + 1 :].split("\\end{", 1)[0]
+    if not _table_is_text(body0):
+        return s  # cells need math mode -> keep l/c/r (\adjustbox still fits the width)
+    s = re.sub(r"\\text\{([^{}]*)\}", r"\1", s)  # \text{} is math-only; plain here
     spec = s[i + 1 : j]
     ncols, d = 0, 0
     for ch in spec:
@@ -937,8 +1021,13 @@ def compile_tex(tex_path: Path, workdir: Path, timeout: int = 120) -> tuple[bool
     pdf = tex_path.with_suffix(".pdf")
     if pdf.exists():
         return True, proc.stdout[-500:]
-    errors = [line for line in proc.stdout.splitlines() if line.startswith("!")]
-    return False, (errors[0] if errors else proc.stdout[-500:])
+    errors = [
+        line
+        for line in proc.stdout.splitlines()
+        if line.startswith("!") or re.match(r"^(\./)?[^:]*\.tex:\d+:", line)
+    ]
+    msg = "\n".join(errors[:3]) if errors else proc.stdout[-500:]
+    return False, msg
 
 
 def compile_entry(
