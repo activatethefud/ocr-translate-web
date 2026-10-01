@@ -187,6 +187,8 @@ class BookDispatcher:
                     continue
                 if all(c.state in ("done", "failed") for c in chunks):
                     book.status = "finalizing"
+                    book.done_pages = book.total_pages
+                    book.progress = min(0.99, book.progress or 0.99)
                     s.commit()
                     self._executor.submit(self._finalize, book.id)
                     continue
@@ -428,6 +430,7 @@ class BookDispatcher:
                 b = s.get(db.Job, book_id)
                 b.status = "done"
                 b.progress = 1.0
+                b.done_pages = b.total_pages
                 b.cost_usd = cost
                 b.error = (
                     "missing translation for pages: " + ", ".join(map(str, missing)) if missing else None
