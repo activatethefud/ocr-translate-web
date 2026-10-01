@@ -223,3 +223,9 @@ def test_double_struck_letters_mapped():
     assert esc("ℝ") == "$\\mathbb{R}$"
     assert esc("x ∈ ℕ") == "x $\\in$ $\\mathbb{N}$"
     assert esc("$A \\subseteq \\mathbb{Z}$") == "$A \\subseteq \\mathbb{Z}$"
+
+
+def test_unicode_ellipsis_maps_to_math_not_text():
+    assert esc("你认为……") == "你认为$\\ldots$$\\ldots$"
+    assert esc("$x … y$") == "$x \\ldots y$"
+    assert "\\ldots" not in esc("a…b").replace("$\\ldots$", "")  # never bare in text

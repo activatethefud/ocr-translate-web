@@ -176,6 +176,7 @@ SYMBOL_TO_MATH = {
     "♥": r"\heartsuit",
     "•": r"\textbullet",
     "·": r"\cdot",
+    "…": r"\ldots",
     "°": r"^\circ",
     "′": r"^\prime",
     "″": r"^{\prime\prime}",
@@ -201,7 +202,6 @@ SYMBOL_TO_MATH = {
 TEXT_REPL = {
     "–": "--",
     "—": "---",
-    "…": r"\ldots",
     "†": r"\dag",
     "‡": r"\ddag",
     "§": r"\S",
@@ -442,6 +442,22 @@ def strip_tags(lx: str) -> str:
     return _TAG.sub(lambda m: "\\qquad (" + m.group(1) + ")", lx or "")
 
 
+_TEXT_GROUP = re.compile(r"\\text\{([^{}]*)\}")
+
+
+def fix_text_ellipsis(s: str) -> str:
+    """``\\ldots``/``\\dots``/``\\cdots`` are math-only; inside ``\\text{...}`` they are
+    undefined and break the compile (common right before CJK text). Use ``…`` there."""
+
+    def repl(m: re.Match) -> str:
+        inner = m.group(1)
+        for cmd in ("\\ldots", "\\cdots", "\\dots", "\\vdots", "\\ddots"):
+            inner = inner.replace(cmd, "…")
+        return "\\text{" + inner + "}"
+
+    return _TEXT_GROUP.sub(repl, s or "")
+
+
 def wrap_math(lx: str) -> str:
     """Wrap a math block in ``\\[ ... \\]`` unless it already is display math.
 
@@ -554,7 +570,7 @@ def _block_tex(b: dict, fig_names: dict, fallback: str = "") -> str | None:
         raw = strip_tags(b.get("latex", ""))
         if t == "table":
             raw = fix_table_spec(raw)
-        w = wrap_math(textify_math(raw, fallback))
+        w = wrap_math(fix_text_ellipsis(textify_math(raw, fallback)))
         if not w:
             return None
         number = str(b.get("number") or "").strip()

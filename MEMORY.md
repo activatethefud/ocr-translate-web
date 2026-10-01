@@ -3,6 +3,27 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: LLM guard vs "missing pages" (book)
+
+Asked whether the guard could handle a book's 4 missing pages (4/59/87/126). Findings
+from a re-run of just those pages with the current code:
+
+- **p4** — the vision model returned **no blocks** (likely a full-page image/cover).
+  Guard now decides **original** (keep the image). Prompt hint added for empty-block pages.
+- **p59** — builds fine.
+- **p87/p126** — build error from **the Unicode ellipsis `…`**: `TEXT_REPL` mapped `…` to
+  `\ldots` *in text mode*, where it is undefined ("undefined control sequence"). Fixed by
+  moving `…` to `SYMBOL_TO_MATH` (-> `$\ldots$` in text, `\ldots` in math). Both pages now
+  build without the guard. Also added `fix_text_ellipsis` for `\ldots` already inside
+  `\text{}`.
+
+Also: those pages had **no recorded error** in the old book because book chunks recorded no
+per-page events back then — so this wasn't the guard failing, it was the guard not existing
+yet plus a real ellipsis bug. The guard needs an error to act on; `run_guard` now runs per
+book chunk. 435 passed + 2 live.
+
+---
+
 ## Session: frontend crash when a book completed
 
 The SPA went blank the moment a book finished. Cause: a **book's `report.json` is a

@@ -90,3 +90,10 @@ def test_preamble_defines_european_trig_shorthands():
     tex = preamble(PipelineConfig(sources=["a.pdf"]))
     for cmd in ("\\tg", "\\ctg", "\\arctg", "\\tgh", "\\sh", "\\ch"):
         assert f"\\providecommand{{{cmd}}}" in tex
+
+
+def test_fix_text_ellipsis_inside_text_groups():
+    from ocrtran.latex import fix_text_ellipsis
+
+    assert fix_text_ellipsis(r"\text{中国\ldots\ldots}") == r"\text{中国……}"
+    assert fix_text_ellipsis(r"x \dots y") == r"x \dots y"  # math context untouched

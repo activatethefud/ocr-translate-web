@@ -89,12 +89,18 @@ def decide(
     output_mode: str,
 ) -> dict:
     """Ask the model what to do with a failed page. Always returns a valid action."""
+    note = (
+        "\nNOTE: this page produced NO text blocks - it is probably a full-page image "
+        '(cover/photo). Prefer "original" so the image is not lost.\n'
+        if not blocks
+        else ""
+    )
     prompt = GUARD_PROMPT.format(
         page=page,
         tgt=target_lang,
         mode=output_mode,
         log=(error or "")[-2500:],
-        blocks=_summarize(blocks),
+        blocks=_summarize(blocks) + note,
     )
     try:
         raw = provider.text(prompt, max_tokens=4000) or ""
