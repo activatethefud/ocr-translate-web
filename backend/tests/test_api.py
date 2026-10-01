@@ -457,3 +457,18 @@ def test_estimate_reports_missing_source(client, tiny_pdf):
     storage.source_path(client.app.state.settings, doc["id"]).unlink()
     r = client.get(f"/api/documents/{doc['id']}/estimate?model=deepseek-flash")
     assert r.status_code == 404  # JSON error, not a 500
+
+
+def test_page_image_re_renders_when_the_render_was_deleted(client, tiny_pdf):
+    from app import storage
+    from ocrtran import paths
+
+    doc = _upload(client, tiny_pdf).json()
+    job = client.post(f"/api/documents/{doc['id']}/jobs", json={"target_lang": "French"}).json()
+    png = (
+        paths.pages_dir(storage.work_dir(client.app.state.settings, doc["id"], job["id"]), "source")
+        / "p-01.png"
+    )
+    png.unlink(missing_ok=True)  # renders are deleted after OCR
+    r = client.get(f"/api/jobs/{job['id']}/pages/1/image")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"

@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 
-from ocrtran import estimate, latex, paths
+from ocrtran import estimate, latex, paths, render
 from ocrtran.cache import load_json, save_json
 from ocrtran.pages import PageSpecError, parse_page_spec
 from ocrtran.providers import OpenAICompatibleProvider, ProviderError
@@ -744,7 +744,25 @@ def job_page_image(job_id: str, page: int, settings: Settings = Depends(_setting
         doc_id = job.document_id
     finally:
         s.close()
-    img = paths.pages_dir(storage.work_dir(settings, doc_id, job_id), "source") / f"p-{page:02d}.png"
+    pages_dir = paths.pages_dir(storage.work_dir(settings, doc_id, job_id), "source")
+    img = pages_dir / f"p-{page:02d}.png"
+    if not img.exists():
+        # renders are deleted after OCR to save disk -> re-render this page on demand
+        s = db.get_session()
+        try:
+            job = s.get(db.Job, job_id)
+            cfg = dict(job.config or {}) if job else {}
+        finally:
+            s.close()
+        source = storage.source_path(settings, doc_id)
+        if not source.exists():
+            raise HTTPException(404, "document source is missing")
+        try:
+            render.render_pages(
+                str(source), pages_dir, cfg.get("dpi", 150), cfg.get("max_px", 1800), pages=[page]
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(422, f"could not render page {page}: {exc}") from exc
     if not img.exists():
         raise HTTPException(404, "page image not ready")
     return FileResponse(str(img), media_type="image/png")

@@ -247,6 +247,14 @@ contains no `\sqrt`/`\frac`/`\cdot`.
   extraction returned a useless log tail. Integration test compiles a broken doc and
   asserts the message points at it.
 
+### 9m. Disk lifecycle (use-and-delete)
+- `test_ocr.py`: `run_ocr` deletes the page renders after the model call.
+- `test_api.py`: the page-image endpoint **re-renders on demand** when the render is gone.
+- `test_books.py`: after a chunk finishes its page PDFs are **moved** to the book tex dir
+  and the chunk's `source/pages`+`source/tex` are purged.
+- low disk: `books.tick`/`batch.tick` pause the job ("paused: low disk space") when
+  `free_mb < MIN_FREE_MB` and auto-resume when space returns.
+
 ### 10. Multi-document batches (no network)
 `backend/tests/test_batch.py` covers sequential batches:
 - `create_batch`: one ordered child per document, page counts per doc, unique

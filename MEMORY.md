@@ -3,6 +3,24 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: disk lifecycle (stop keeping intermediates for the whole run)
+
+Book work dirs grew O(all pages) because intermediates were kept and only pruned by age.
+Switched to **use-and-delete**:
+- `ocr.run_ocr` deletes each rendered page PNG right after the model call; the page-image
+  endpoint re-renders on demand (`render.render_pages(..., pages=[page])`).
+- `books._collect_pages` now **moves** (`shutil.move`) the chunk's page PDFs + figures into
+  the shared book tex dir (was `copy2`, so every page existed twice), then
+  `_purge_work_dir(cfg.workdir)` deletes the chunk's `source/pages`, `source/tex`,
+  `chunks`, `out`.
+- `books._finalize` purges the whole book work dir after the artifact is written.
+- **Low-disk pause**: `books.tick`/`batch.tick` pause running jobs when
+  `free_mb < MIN_FREE_MB` (`LOW_DISK_MARK`) and auto-resume when space returns.
+Peak is now ~one chunk + the current book's page PDFs instead of the whole book.
+Tests: +5. **458 passed** + 2 live.
+
+---
+
 ## Session: batch-of-books estimate accuracy
 
 Verified the estimate for **multiple files + book mode combined**: the effect estimates

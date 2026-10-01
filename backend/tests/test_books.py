@@ -818,3 +818,33 @@ def test_recover_resets_a_book_stuck_in_finalizing(env):
         s.close()
     _dispatcher(env).recover()
     assert db.get_session().get(db.Job, bid).status == "running"
+
+
+@pytest.mark.integration
+def test_chunk_work_is_purged_and_pages_moved(env, xelatex_available):
+    if not xelatex_available:
+        pytest.skip("xelatex not installed")
+    bid = _new_book(env, n_pages=2, chunk_size=2)  # single chunk, pages 1-2
+    d = _dispatcher(env)
+    cid = _chunks(bid)[0].id
+    d._run_chunk(bid, cid)
+
+    chunk_work = storage.work_dir(env, "docbook", bid) / "chunks" / cid
+    assert not (chunk_work / "source" / "pages").exists()  # renders deleted
+    assert not (chunk_work / "source" / "tex").exists()  # tex moved out
+    book_tex = storage.work_dir(env, "docbook", bid) / "source" / "tex"
+    assert list(book_tex.glob("p0*.pdf"))  # page PDFs live in the book dir (moved)
+
+
+def test_tick_pauses_on_low_disk_and_auto_resumes(env, monkeypatch):
+    from app import storage
+
+    bid = _new_book(env, n_pages=2, chunk_size=1)
+    monkeypatch.setattr(storage, "free_mb", lambda _p: 0)
+    _dispatcher(env).tick()
+    job = db.get_session().get(db.Job, bid)
+    assert job.status == "paused" and job.error == books.LOW_DISK_MARK
+
+    monkeypatch.setattr(storage, "free_mb", lambda _p: 10**6)
+    _dispatcher(env).tick()
+    assert db.get_session().get(db.Job, bid).status == "running"

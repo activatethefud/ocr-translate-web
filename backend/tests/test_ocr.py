@@ -274,3 +274,21 @@ def test_run_ocr_respects_throttle_limit(tmp_path, tiny_pdf):
     res = run_ocr(cfg, prov)
     assert [e["page"] for e in res[tiny_pdf.stem]] == [1, 2]
     assert prov.peak <= 1  # the throttle kept it serial
+
+
+def test_run_ocr_deletes_page_renders(tmp_path, tiny_pdf):
+    from ocrtran import paths
+    from ocrtran.config import PipelineConfig
+    from ocrtran.ocr import run_ocr
+
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)],
+        workdir=str(tmp_path / "w"),
+        cache_dir=str(tmp_path / "c"),
+        target_lang="French",
+        figure_mode="off",
+        concurrency=1,
+    )
+    run_ocr(cfg, FakeProvider())
+    # renders are only needed for the model call -> deleted to save space
+    assert list(paths.pages_dir(cfg.workdir, tiny_pdf.stem).glob("p-*.png")) == []

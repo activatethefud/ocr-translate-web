@@ -357,3 +357,15 @@ def test_batch_of_books_end_to_end(env, monkeypatch, xelatex_available):
     status, error = _status()
     assert status == "done", error
     assert all(k.status == "done" for k in _children(bid))
+
+
+def test_batch_tick_pauses_on_low_disk(env, monkeypatch):
+    from app import storage
+
+    bid = _create(env, [("d1", 1)], chunk_size=1)
+    monkeypatch.setattr(storage, "free_mb", lambda _p: 0)
+    BatchDispatcher(env, runner=_FakeRunner()).tick()
+    assert db.get_session().get(db.Job, bid).status == "paused"
+    monkeypatch.setattr(storage, "free_mb", lambda _p: 10**6)
+    BatchDispatcher(env, runner=_FakeRunner()).tick()
+    assert db.get_session().get(db.Job, bid).status == "running"

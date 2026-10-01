@@ -187,7 +187,15 @@ reuses the existing document row instead of creating a copy); output artifacts a
 stored at ``artifacts/blobs/<sha256>.pdf`` with each job hard-linking its copy.
 ``ARTIFACT_TTL_HOURS`` (default **0 = keep**) prunes old output artifacts.
 
-``CACHE_TTL_HOURS`` (default **5**) controls automatic pruning: `storage.prune_old_work`
+**Use-and-delete lifecycle** (biggest win): page renders are deleted right after the
+vision call (the page-image endpoint re-renders on demand); a book chunk's built page
+PDFs/figures are **moved** (not copied) into the book's tex dir and the rest of the chunk
+work dir is purged immediately; a book's work dir is purged right after it is assembled.
+Peak disk is therefore ~one chunk + the current book's page PDFs instead of the whole
+book (≫10× less). If free space drops below ``MIN_FREE_MB`` the book/batch dispatcher
+**pauses** ("paused: low disk space") and auto-resumes once space is back.
+
+``CACHE_TTL_HOURS`` (default **5**) is the backstop for anything left behind: `storage.prune_old_work`
 deletes whole job work dirs whose last activity is older than the TTL, keeping active
 jobs, the per-document OCR cache and the output artifacts. It runs **at startup and every
 30 min** in the app, is exposed at ``POST /api/admin/prune`` and via

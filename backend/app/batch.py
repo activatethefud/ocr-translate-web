@@ -20,7 +20,7 @@ from sqlalchemy import select
 from ocrtran.config import PipelineConfig
 from ocrtran.pages import parse_page_spec
 
-from . import books, db
+from . import books, db, storage
 from .runner import JobRunner
 from .secrets import get_cipher
 from .settings import Settings
@@ -199,6 +199,31 @@ class BatchDispatcher:
     def tick(self) -> None:
         s = db.get_session()
         try:
+            free = storage.free_mb(self.settings.storage_dir)
+            if free < self.settings.min_free_mb:
+                for b in (
+                    s.execute(select(db.Job).where(db.Job.kind == "batch", db.Job.status == "running"))
+                    .scalars()
+                    .all()
+                ):
+                    b.status = "paused"
+                    b.error = books.LOW_DISK_MARK
+                    s.commit()
+                    _emit(b.id, "paused", f"low disk ({free} MB free)", {"free_mb": free})
+                return
+            for b in (
+                s.execute(
+                    select(db.Job).where(
+                        db.Job.kind == "batch", db.Job.status == "paused", db.Job.error == books.LOW_DISK_MARK
+                    )
+                )
+                .scalars()
+                .all()
+            ):
+                b.status = "running"
+                b.error = None
+                s.commit()
+                _emit(b.id, "resumed", "disk space recovered", {"free_mb": free})
             batches = (
                 s.execute(select(db.Job).where(db.Job.kind == "batch", db.Job.status == "running"))
                 .scalars()
@@ -337,3 +362,12 @@ class BatchDispatcher:
         finally:
             s.close()
         self.wake()
+
+
+def _emit(batch_id: str, kind: str, message: str, data: dict | None = None) -> None:
+    s = db.get_session()
+    try:
+        s.add(db.EventRecord(job_id=batch_id, stage="batch", status=kind, message=message, data=data or {}))
+        s.commit()
+    finally:
+        s.close()

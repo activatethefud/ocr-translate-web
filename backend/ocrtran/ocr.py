@@ -252,6 +252,12 @@ def run_ocr(
             with lock:
                 collected[pi] = entry
                 cache.save_json(ocr_path, [collected[k] for k in sorted(collected)])
+            # the render is only needed for the model call; drop it to save space
+            # (the page-image endpoint re-renders on demand)
+            try:
+                Path(img).unlink(missing_ok=True)
+            except OSError:
+                pass
             emit(
                 on_event,
                 Event(

@@ -32,6 +32,9 @@ from .settings import Settings
 log = logging.getLogger("app.books")
 
 _ENGINE_KEYS = {f.name for f in fields(PipelineConfig)}
+# marker stored on a job paused because the disk is (nearly) full; auto-cleared when
+# space is available again
+LOW_DISK_MARK = "paused: low disk space"
 
 
 def _engine_filter(data: dict) -> dict:
@@ -170,6 +173,32 @@ class BookDispatcher:
     def tick(self) -> None:
         s = db.get_session()
         try:
+            free = storage.free_mb(self.settings.storage_dir)
+            if free < self.settings.min_free_mb:
+                # pause anything running; the pruner frees space and we auto-resume
+                for b in (
+                    s.execute(select(db.Job).where(db.Job.kind == "book", db.Job.status == "running"))
+                    .scalars()
+                    .all()
+                ):
+                    b.status = "paused"
+                    b.error = LOW_DISK_MARK
+                    s.commit()
+                    _emit(b.id, "paused", f"low disk ({free} MB free)", {"free_mb": free})
+                return
+            for b in (
+                s.execute(
+                    select(db.Job).where(
+                        db.Job.kind == "book", db.Job.status == "paused", db.Job.error == LOW_DISK_MARK
+                    )
+                )
+                .scalars()
+                .all()
+            ):
+                b.status = "running"
+                b.error = None
+                s.commit()
+                _emit(b.id, "resumed", "disk space recovered", {"free_mb": free})
             books = (
                 s.execute(select(db.Job).where(db.Job.kind == "book", db.Job.status == "running"))
                 .scalars()
@@ -255,6 +284,8 @@ class BookDispatcher:
             latex.run_build(cfg, results, on_event=on_progress)
             guard.run_guard(cfg, provider, results, on_event=on_progress)
             self._collect_pages(cfg, book_config, doc_id, book_id, chunk_range)
+            # the page PDFs/figures were moved out; drop the rest of this chunk's work
+            self._purge_work_dir(cfg.workdir)
             usage = getattr(provider, "usage", {}) or {}
             cost = pricing.cost_usd(
                 cfg.model, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
@@ -305,15 +336,25 @@ class BookDispatcher:
     def _collect_pages(
         self, cfg: PipelineConfig, book_config: dict, doc_id: str, book_id: str, chunk_range: tuple[int, int]
     ) -> None:
-        """Copy the chunk's built per-page PDFs into the shared book tex dir."""
+        """**Move** the chunk's built per-page PDFs into the shared book tex dir.
+
+        Moving (not copying) means each page exists once, and lets us delete the whole
+        chunk work dir right after.
+        """
         book_tex = storage.work_dir(self.settings, doc_id, book_id) / "source" / "tex"
         book_tex.mkdir(parents=True, exist_ok=True)
+        figdir = paths.tex_dir(cfg.workdir, "source")
         for page in range(chunk_range[0], chunk_range[1] + 1):
             for src in paths.page_pdfs(cfg.workdir, "source", page):
-                shutil.copy2(src, book_tex / src.name)
-            figdir = paths.tex_dir(cfg.workdir, "source")
+                shutil.move(str(src), str(book_tex / src.name))
             for fig in figdir.glob(f"fig_{page}_*.*"):
-                shutil.copy2(fig, book_tex / fig.name)
+                shutil.move(str(fig), str(book_tex / fig.name))
+
+    @staticmethod
+    def _purge_work_dir(workdir: str | Path) -> None:
+        """Delete the heavy regenerateable parts of a work dir (keep the dir itself)."""
+        for sub in ("source/pages", "source/tex", "chunks", "out"):
+            shutil.rmtree(Path(workdir) / sub, ignore_errors=True)
 
     def _update_glossary(self, book_id: str, book_config: dict, provider, results: dict) -> None:
         pairs = extract_glossary(
@@ -439,6 +480,7 @@ class BookDispatcher:
                 s.commit()
             finally:
                 s.close()
+            self._purge_work_dir(storage.work_dir(self.settings, doc_id, book_id))
             _emit(book_id, "book_done", "assembled", report)
         except Exception as exc:  # noqa: BLE001 - never leave the book in finalizing
             log.exception("finalize failed for book %s", book_id)
