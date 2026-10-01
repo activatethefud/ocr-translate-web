@@ -10,7 +10,7 @@ from pathlib import Path
 
 import fitz
 
-from . import paths
+from . import paths, render
 from .config import PipelineConfig
 from .events import CancelToken, Emitter, Event, emit
 from .pages import parse_page_spec
@@ -79,14 +79,31 @@ def run_math_check(
     """Opt-in formula re-check (extra vision calls). Stores ``math_check`` per page."""
     cancel = cancel or CancelToken()
     total = sum(len(v) for v in results.values())
+    srcmap = {Path(s).stem: s for s in cfg.resolve_sources()}
     emit(on_event, Event("verify", "started", total=total))
     for base, entries in results.items():
         for entry in entries:
             cancel.check()
+            img = Path(entry.get("img") or "")
+            if not img.exists():  # renders are deleted after OCR -> re-render for the check
+                src = srcmap.get(base)
+                if src:
+                    try:
+                        render.render_pages(
+                            src,
+                            paths.pages_dir(cfg.workdir, base),
+                            cfg.dpi,
+                            cfg.max_px,
+                            pages=[entry["page"]],
+                        )
+                    except Exception:  # noqa: BLE001 - recorded below
+                        pass
             try:
-                entry["math_check"] = verify_math_page(provider, entry["img"], entry.get("blocks", []))
+                entry["math_check"] = verify_math_page(provider, img, entry.get("blocks", []))
             except Exception as exc:  # noqa: BLE001
                 entry["math_check"] = {"ok": True, "issues": [{"problem": str(exc)}]}
+            finally:
+                img.unlink(missing_ok=True)  # don't keep the re-render
             ok = entry["math_check"]["ok"]
             emit(
                 on_event,

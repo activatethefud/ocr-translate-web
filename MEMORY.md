@@ -3,6 +3,15 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: verify_math was broken by the render deletion
+
+`verify_math_page` uses `entry["img"]`, but the disk-lifecycle change deletes every page
+render right after OCR -> the verify pass got a missing file and (silently, via its
+try/except) recorded a problem instead of checking. `run_math_check` now **re-renders on
+demand** (and deletes the re-render afterwards). Test added. **460 passed** + 2 live.
+
+---
+
 ## Session: formula check missing from the estimate for scans
 
 `verify_math` was already a `predict_cost` input, but for **scanned** documents

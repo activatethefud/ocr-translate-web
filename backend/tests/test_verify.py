@@ -266,3 +266,30 @@ def test_verify_math_page_skips_when_no_formulas(tmp_path):
     prov = _CountingInline()
     res = verify.verify_math_page(prov, img, [{"type": "prose", "target": "plain text"}])
     assert res["checked"] == 0 and prov.calls == 0
+
+
+def test_run_math_check_re_renders_deleted_page_image(tmp_path, tiny_pdf):
+    """verify_math still works when OCR has deleted the page render (disk lifecycle)."""
+    from pathlib import Path
+
+    from ocrtran import ocr, verify
+    from ocrtran.config import PipelineConfig
+    from tests.conftest import FakeProvider
+
+    cfg = PipelineConfig(
+        sources=[str(tiny_pdf)],
+        workdir=str(tmp_path / "w"),
+        cache_dir=str(tmp_path / "c"),
+        target_lang="French",
+        verify_math=True,
+        figure_mode="off",
+        concurrency=1,
+    )
+    res = ocr.run_ocr(cfg, FakeProvider())
+    entry = res[tiny_pdf.stem][0]
+    assert not Path(entry["img"]).exists()  # deleted after OCR
+
+    verify.run_math_check(cfg, FakeProvider(), res)
+    assert entry["math_check"]["checked"] >= 1
+    assert not any("No such file" in str(i.get("problem", "")) for i in entry["math_check"]["issues"])
+    assert not Path(entry["img"]).exists()  # re-render cleaned up again
