@@ -89,3 +89,32 @@ def test_estimate_has_eta():
     assert r["est_seconds"] > 0
     faster = predict_cost("deepseek-flash", 10, concurrency=8)
     assert faster["est_seconds"] < r["est_seconds"]
+
+
+def test_scanned_documents_assume_a_formula_fraction(tmp_path):
+    """A scan has no text layer; formula check + annotations must not estimate to 0."""
+    import fitz
+
+    from ocrtran.estimate import SCAN_FORMULA_FRACTION
+
+    p = tmp_path / "scan.pdf"
+    d = fitz.open()
+    for _ in range(3):
+        pg = d.new_page(width=595, height=842)
+        pg.draw_rect(fitz.Rect(50, 50, 400, 400), color=(0, 0, 0))
+    d.save(p)
+    d.close()
+
+    sig = analyze_document(p)
+    assert sig["kind"] == "scan"
+    assert sig["formula_fraction"] >= SCAN_FORMULA_FRACTION
+
+    base = predict_cost(
+        "deepseek-flash", 10, figure_mode="off", verify_math=False, formula_fraction=sig["formula_fraction"]
+    )
+    ver = predict_cost(
+        "deepseek-flash", 10, figure_mode="off", verify_math=True, formula_fraction=sig["formula_fraction"]
+    )
+    assert ver["assumptions"]["formula_pages"] > 0
+    assert ver["est_cost_usd"] > base["est_cost_usd"]
+    assert ver["assumptions"]["formula_fraction"] == sig["formula_fraction"]

@@ -64,6 +64,10 @@ def is_cjk(target_lang: str) -> bool:
 
 _MATH_CHARS = re.compile(r"[=≤≥≠≈∑∏∫√∞±×÷∘→⇒∈∀∃⊂⊆∪∩πθαβγδλμσ]")
 _DRAWING_HINT = 25  # a page with this many vector ops is probably a figure
+# A scan has no text layer, so formulas can't be detected from the PDF. Assume a
+# substantial fraction carry formulas, otherwise the formula check + in-math
+# annotations would be estimated as 0.
+SCAN_FORMULA_FRACTION = 0.4
 
 
 @lru_cache(maxsize=64)
@@ -102,14 +106,17 @@ def _analyze_cached(path: str, _mtime: float, sample: int = 8) -> dict:
         got = max(1, len(idxs))
         kind = "scan" if sum(chars) < 20 * got else "text"
         avg = sum(chars) / got
+        formula_fraction = math_pages / got
         if kind == "scan":
             avg = max(avg, 1200)  # can't read scanned text; assume a normal page
+            # no text layer -> assume a typical formula density instead of 0
+            formula_fraction = max(formula_fraction, SCAN_FORMULA_FRACTION)
         return {
             "n_pages": n,
             "page_w": float(pw),
             "page_h": float(ph),
             "avg_chars_per_page": float(avg),
-            "formula_fraction": math_pages / got,
+            "formula_fraction": formula_fraction,
             "figure_fraction": fig_pages / got,
             "kind": kind,
         }
@@ -222,6 +229,7 @@ def predict_cost(
             "input_tokens_per_call": in_per_call,
             "output_tokens_per_page": round(out_per_page),
             "formula_pages": formula_pages,
+            "formula_fraction": round(max(0.0, min(1.0, formula_fraction)), 3),
             "figure_pages": figure_pages,
             "price_in_per_mtok": pin,
             "price_out_per_mtok": pout,

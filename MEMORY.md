@@ -3,6 +3,21 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: formula check missing from the estimate for scans
+
+`verify_math` was already a `predict_cost` input, but for **scanned** documents
+`formula_fraction` came from the PDF text layer (scans have none) -> 0, so
+`formula_pages = 0` and the **formula check** (and the in-math annotation pass) were
+estimated as **zero** — toggling "verify formulas" changed nothing. Fix:
+`estimate._analyze_cached` assumes `SCAN_FORMULA_FRACTION = 0.4` for `kind == "scan"`
+instead of 0; the assumption is surfaced as `formula_fraction` in the response.
+
+Live (biologija, 345-page scan, Chinese, judge): verify off → $1.0568 / 1173 calls;
+verify on → **$1.144 / 1311 calls** (+138 `formula_check` calls). Test: a scan gets a
+formula fraction and verify raises the estimate. **459 passed** + 2 live.
+
+---
+
 ## Session: disk lifecycle (stop keeping intermediates for the whole run)
 
 Book work dirs grew O(all pages) because intermediates were kept and only pruned by age.
