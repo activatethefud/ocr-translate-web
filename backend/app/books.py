@@ -214,7 +214,15 @@ class BookDispatcher:
                     s.commit()
                     _emit(book.id, "paused", "budget reached", {"spend": spend})
                     continue
-                if all(c.state in ("done", "failed") for c in chunks):
+                states = {c.state for c in chunks}
+                if states <= {"done", "failed", "canceled"}:
+                    if "canceled" in states:
+                        # a canceled book must not sit in "running" forever
+                        book.status = "canceled"
+                        book.finished_at = db.utcnow()
+                        s.commit()
+                        _emit(book.id, "canceled", "chunks canceled")
+                        continue
                     book.status = "finalizing"
                     book.done_pages = book.total_pages
                     book.progress = min(0.99, book.progress or 0.99)

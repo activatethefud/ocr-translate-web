@@ -848,3 +848,17 @@ def test_tick_pauses_on_low_disk_and_auto_resumes(env, monkeypatch):
     monkeypatch.setattr(storage, "free_mb", lambda _p: 10**6)
     _dispatcher(env).tick()
     assert db.get_session().get(db.Job, bid).status == "running"
+
+
+def test_book_with_canceled_chunks_is_marked_canceled(env):
+    bid = _new_book(env, n_pages=4, chunk_size=2)  # 2 chunks
+    s = db.get_session()
+    try:
+        for c in s.execute(select(db.Chunk).where(db.Chunk.book_job_id == bid)).scalars():
+            c.state = "canceled"
+        s.commit()
+    finally:
+        s.close()
+    _dispatcher(env).tick()
+    job = db.get_session().get(db.Job, bid)
+    assert job.status == "canceled"  # never stuck in "running"

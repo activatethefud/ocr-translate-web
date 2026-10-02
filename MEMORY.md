@@ -3,6 +3,25 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: dispatcher "stall" — canceled book children stuck in running
+
+A batch was canceled, leaving its **book children** in status `running` with chunks
+`done`+`canceled`, and no events for hours (looked stalled). Cause: `books.tick` only
+finalized when `all(c.state in ("done","failed"))` — **`canceled` was not terminal**, so
+those books never finalized and sat "running" forever; `batch.cancel` canceled the child's
+queued chunks but never set the child book's status.
+
+Fix:
+- `books.tick`: treat `canceled` as terminal; a running book whose chunks include a
+  canceled one is marked **`canceled`** (no assembly) instead of looping.
+- `batch.cancel`: cancel the book child's queued/running chunks **and** set the child book
+  status to `canceled`.
+Test: a book with canceled chunks becomes `canceled` on tick. **468 passed** + 2 live.
+Verified live: the three stuck books flipped to `canceled`; the next batch progresses
+(~4 pages/25 s).
+
+---
+
 ## Session: formulas from other sciences (physics, chemistry, biology)
 
 Made the pipeline domain-agnostic:
