@@ -3,6 +3,16 @@
 Rolling log of decisions and work so future sessions (human or agent) can pick up
 without re-deriving everything. Newest entries at the top. **No secrets here.**
 
+## Session: cache TTL 5h -> 24h
+
+Changed the work-intermediate retention from **5 h to 24 h**: `settings.cache_ttl_hours`
+default and env fallback (24.0), `storage.prune_old_work` default, and an explicit
+`CACHE_TTL_HOURS=24` in `.env`. `ARTIFACT_TTL_HOURS` stays 0 (outputs kept). Note: keeping
+intermediates a full day uses more disk, so the low-disk pause + `MIN_FREE_MB` guard matter
+more now.
+
+---
+
 ## Session: dispatcher "stall" — canceled book children stuck in running
 
 A batch was canceled, leaving its **book children** in status `running` with chunks

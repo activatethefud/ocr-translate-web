@@ -195,7 +195,7 @@ Peak disk is therefore ~one chunk + the current book's page PDFs instead of the 
 book (≫10× less). If free space drops below ``MIN_FREE_MB`` the book/batch dispatcher
 **pauses** ("paused: low disk space") and auto-resumes once space is back.
 
-``CACHE_TTL_HOURS`` (default **5**) is the backstop for anything left behind: `storage.prune_old_work`
+``CACHE_TTL_HOURS`` (default **24**) is the backstop for anything left behind: `storage.prune_old_work`
 deletes whole job work dirs whose last activity is older than the TTL, keeping active
 jobs, the per-document OCR cache and the output artifacts. It runs **at startup and every
 30 min** in the app, is exposed at ``POST /api/admin/prune`` and via

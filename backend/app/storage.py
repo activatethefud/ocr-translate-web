@@ -241,7 +241,7 @@ def prune_work(settings, keep_job_ids: set[str] | None = None) -> dict:
     return {"freed_bytes": freed, "freed_mb": freed // (1024 * 1024), "removed": removed}
 
 
-def prune_old_work(settings, keep_job_ids: set[str] | None = None, ttl_hours: float = 5.0) -> dict:
+def prune_old_work(settings, keep_job_ids: set[str] | None = None, ttl_hours: float = 24.0) -> dict:
     """Delete whole job work dirs whose last activity is older than ``ttl_hours``.
 
     Work dirs hold only regenerateable intermediates (rendered pages, LaTeX, figure
